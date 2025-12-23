@@ -98,32 +98,117 @@ function authenticate(request: Request, env: Env): Response | null {
 	return null; // Authentication successful
 }
 
+
+// CORS headers helper
+function corsHeaders() {
+	return {
+		"Access-Control-Allow-Origin": "*",
+		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+		"Access-Control-Allow-Headers": "Content-Type, Authorization",
+	};
+}
+
+
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 
-
-// Authenticate request
-const authError = authenticate(request, env);
-if (authError) {
-	return authError;
-}
-
-// Test endpoint to check bindings
-if (url.pathname === "/test") {
-	return new Response(
-		JSON.stringify({
-			hasAI: !!env.AI,
-			hasVectorize: !!env.VECTORIZE,
-			aiType: typeof env.AI,
-			vectorizeType: typeof env.VECTORIZE,
-		}),
-		{
-			headers: { "Content-Type": "application/json" },
+		// Handle CORS preflight
+		if (request.method === "OPTIONS") {
+			return new Response(null, {
+				headers: corsHeaders(),
+			});
 		}
-	);
-}
 
+		// Authenticate request
+		const authError = authenticate(request, env);
+		if (authError) {
+			return authError;
+		}
+
+		// Root endpoint - API documentation
+		if (url.pathname === "/" && request.method === "GET") {
+			return new Response(
+				JSON.stringify({
+					name: "Vectorize MCP Worker",
+					version: "1.0.0",
+					description: "High-performance semantic search on Cloudflare Edge",
+					endpoints: {
+						"POST /populate": "Populate the vector index with knowledge base",
+						"POST /search": "Search the index (requires 'query' and optional 'topK' in body)",
+						"GET /test": "Check service health and bindings",
+						"GET /stats": "Get index statistics",
+					},
+					authentication: env.API_KEY ? "required" : "disabled (dev mode)",
+					docs: "https://github.com/dannwaneri/vectorize-mcp-worker",
+				}),
+				{
+					headers: { 
+						"Content-Type": "application/json",
+						...corsHeaders(),
+					},
+				}
+			);
+		}
+
+		// Test endpoint to check bindings
+		if (url.pathname === "/test" && request.method === "GET") {
+			return new Response(
+				JSON.stringify({
+					status: "healthy",
+					timestamp: new Date().toISOString(),
+					bindings: {
+						hasAI: !!env.AI,
+						hasVectorize: !!env.VECTORIZE,
+						hasAPIKey: !!env.API_KEY,
+					},
+					mode: env.API_KEY ? "production" : "development",
+				}),
+				{
+					headers: { 
+						"Content-Type": "application/json",
+						...corsHeaders(),
+					},
+				}
+			);
+		}
+
+		// Stats endpoint
+		if (url.pathname === "/stats" && request.method === "GET") {
+			try {
+				// Get index info
+				const stats = await env.VECTORIZE.describe();
+				
+				return new Response(
+					JSON.stringify({
+						index: stats,
+						knowledgeBaseSize: knowledgeBase.length,
+						model: "@cf/baai/bge-small-en-v1.5",
+						dimensions: 384,
+					}),
+					{
+						headers: { 
+							"Content-Type": "application/json",
+							...corsHeaders(),
+						},
+					}
+				);
+			} catch (error) {
+				return new Response(
+					JSON.stringify({
+						error: "Failed to get stats",
+						message: error instanceof Error ? error.message : "Unknown error",
+					}),
+					{
+						status: 500,
+						headers: { 
+							"Content-Type": "application/json",
+							...corsHeaders(),
+						},
+					}
+				);
+			}
+		}
 
 		// Route: Populate the index
 		if (url.pathname === "/populate" && request.method === "POST") {
@@ -132,13 +217,56 @@ if (url.pathname === "/test") {
 
 		// Route: Search the index
 		if (url.pathname === "/search" && request.method === "POST") {
-			const { query, topK = 5 } = await request.json<{ query: string; topK?: number }>();
-			return await searchIndex(query, topK, env);
+			try {
+				const body = await request.json<{ query: string; topK?: number }>();
+				
+				if (!body.query) {
+					return new Response(
+						JSON.stringify({
+							error: "Missing 'query' field in request body",
+						}),
+						{
+							status: 400,
+							headers: { 
+								"Content-Type": "application/json",
+								...corsHeaders(),
+							},
+						}
+					);
+				}
+
+				const { query, topK = 5 } = body;
+				return await searchIndex(query, topK, env);
+			} catch (error) {
+				return new Response(
+					JSON.stringify({
+						error: "Invalid JSON in request body",
+					}),
+					{
+						status: 400,
+						headers: { 
+							"Content-Type": "application/json",
+							...corsHeaders(),
+						},
+					}
+				);
+			}
 		}
 
-		return new Response("Vectorize MCP Worker\n\nEndpoints:\nPOST /populate - Populate index\nPOST /search - Search index", {
-			headers: { "Content-Type": "text/plain" },
-		});
+		// 404 for unknown routes
+		return new Response(
+			JSON.stringify({
+				error: "Not found",
+				hint: "Visit GET / for API documentation",
+			}),
+			{
+				status: 404,
+				headers: { 
+					"Content-Type": "application/json",
+					...corsHeaders(),
+				},
+			}
+		);
 	},
 };
 
@@ -179,17 +307,24 @@ async function populateIndex(env: Env): Promise<Response> {
 				model: "@cf/baai/bge-small-en-v1.5",
 			}),
 			{
-				headers: { "Content-Type": "application/json" },
+				headers: { 
+					"Content-Type": "application/json",
+					...corsHeaders(),
+				},
 			}
 		);
 	} catch (error) {
 		return new Response(
 			JSON.stringify({
 				error: error instanceof Error ? error.message : "Unknown error",
+				hint: "Make sure Vectorize index is created and bound correctly",
 			}),
 			{
 				status: 500,
-				headers: { "Content-Type": "application/json" },
+				headers: { 
+					"Content-Type": "application/json",
+					...corsHeaders(),
+				},
 			}
 		);
 	}
@@ -207,7 +342,10 @@ async function searchIndex(query: string, topK: number, env: Env): Promise<Respo
 				}),
 				{
 					status: 400,
-					headers: { "Content-Type": "application/json" },
+					headers: { 
+						"Content-Type": "application/json",
+						...corsHeaders(),
+					},
 				}
 			);
 		}
@@ -250,7 +388,10 @@ async function searchIndex(query: string, topK: number, env: Env): Promise<Respo
 				},
 			}),
 			{
-				headers: { "Content-Type": "application/json" },
+				headers: { 
+					"Content-Type": "application/json",
+					...corsHeaders(),
+				},
 			}
 		);
 	} catch (error) {
@@ -261,7 +402,10 @@ async function searchIndex(query: string, topK: number, env: Env): Promise<Respo
 			}),
 			{
 				status: 500,
-				headers: { "Content-Type": "application/json" },
+				headers: { 
+					"Content-Type": "application/json",
+					...corsHeaders(),
+				},
 			}
 		);
 	}
