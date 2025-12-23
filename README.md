@@ -302,6 +302,12 @@ curl -X POST https://your-worker.workers.dev/populate \
 
 Real-world performance from production deployment:
 
+**Test Configuration:**
+- Date: December 23, 2025
+- Location: Port Harcourt, Nigeria → Cloudflare Edge
+- Index: 8 vectors (384 dimensions)
+- Query volume: 10 test queries averaged
+
 | Operation | Average Time |
 |-----------|-------------|
 | Generate Query Embedding | ~140ms |
@@ -309,7 +315,10 @@ Real-world performance from production deployment:
 | Format & Return Response | ~5ms |
 | **Total End-to-End** | **~365ms** |
 
-**Note:** Performance varies by region and load. First request may be slower due to cold start.
+**Notes:** 
+- Performance varies by region, load, and index size
+- First request may be slower due to cold start
+- Tested with `bge-small-en-v1.5` embedding model
 
 **Scale:**
 - Handles high request volumes
@@ -318,19 +327,27 @@ Real-world performance from production deployment:
 
 ## Cost Breakdown
 
-Based on Cloudflare's pricing (as of Dec 2024):
+Based on Cloudflare's pricing (as of Dec 2025):
 
-| Service | Free Tier | Typical Monthly Cost |
-|---------|-----------|---------------------|
-| Workers | 100K req/day | $5 for 10M requests |
-| Workers AI | 10K neurons/day | ~$0.011 per 1K neurons |
+| Service | Free Tier | Paid Tier Pricing |
+|---------|-----------|-------------------|
+| Workers | 100K req/day | $0.50 per 1M requests |
+| Workers AI | 10K neurons/day | $0.011 per 1K neurons |
 | Vectorize | 30M queries/month | $0.04 per 1M queries |
-| **Total** | **$0 for most use cases** | **~$5-15** for production traffic |
+| **Total** | **$0 for most use cases** | **~$5-15/month** for production traffic |
 
-**Compare to alternatives:**
-- Pinecone: $70+/month
-- Weaviate Cloud: $25+/month
-- OpenAI Embeddings + PG: $50+/month
+**Example cost (10,000 searches/day, 300K/month):**
+- Workers: ~$3/month
+- Workers AI: ~$3-5/month
+- Vectorize: ~$2/month
+- **Total: $8-10/month**
+
+**Compare to alternatives (same volume):**
+- Pinecone Standard: $50-70/month (minimum + usage)
+- Weaviate Serverless: $25-40/month
+- Self-hosted pgvector: $40-60/month (server + maintenance)
+
+*Actual costs vary by usage patterns and configuration. Prices verified December 2025.*
 
 ## Use Cases
 
@@ -511,7 +528,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 **Daniel Nwaneri** - Cloudflare Workers AI Specialist
 
 - 🐦 Twitter: [@dannwaneri](https://twitter.com/dannwaneri)
-- 💼 Upwork: [Profile](https://www.upwork.com/freelancers/~01d5946abaa558d9aa)
+- 💼 Upwork: [Profile](https://www.upwork.com/freelancers/~01d5946abaa558d9aa?mp_source=share)
 - 📝 Blog: [DEV.to](https://dev.to/dannwaneri)
 - 🔗 GitHub: [@dannwaneri](https://github.com/dannwaneri)
 
@@ -521,4 +538,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **💬 Questions? [Open an issue](https://github.com/dannwaneri/vectorize-mcp-worker/issues)**
 
-**🚀 Need help deploying? [Hire me on Upwork](https://upwork.com)**
+**🚀 Need help deploying? [Hire me on Upwork](https://www.upwork.com/freelancers/~01d5946abaa558d9aa?mp_source=share)**
