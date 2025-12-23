@@ -1,6 +1,7 @@
 export interface Env {
 	AI: Ai;
 	VECTORIZE: VectorizeIndex;
+	API_KEY?: string; // Optional: for production authentication
 }
 
 // Our knowledge base data
@@ -47,10 +48,66 @@ const knowledgeBase = [
 	},
 ];
 
+
+
+// Authentication middleware
+function authenticate(request: Request, env: Env): Response | null {
+	const url = new URL(request.url);
+	
+	// Skip auth for test endpoint and root
+	if (url.pathname === "/" || url.pathname === "/test") {
+		return null;
+	}
+
+	// If API_KEY is not set, allow all requests (development mode)
+	if (!env.API_KEY) {
+		return null;
+	}
+
+	// Check for Authorization header
+	const authHeader = request.headers.get("Authorization");
+	
+	if (!authHeader) {
+		return new Response(
+			JSON.stringify({
+				error: "Missing Authorization header",
+				hint: "Include 'Authorization: Bearer YOUR_API_KEY' in your request",
+			}),
+			{
+				status: 401,
+				headers: { "Content-Type": "application/json" },
+			}
+		);
+	}
+
+	// Validate Bearer token format
+	const token = authHeader.replace("Bearer ", "");
+	
+	if (token !== env.API_KEY) {
+		return new Response(
+			JSON.stringify({
+				error: "Invalid API key",
+			}),
+			{
+				status: 403,
+				headers: { "Content-Type": "application/json" },
+			}
+		);
+	}
+
+	return null; // Authentication successful
+}
+
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 
+
+// Authenticate request
+const authError = authenticate(request, env);
+if (authError) {
+	return authError;
+}
 
 // Test endpoint to check bindings
 if (url.pathname === "/test") {
