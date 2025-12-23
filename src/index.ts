@@ -143,6 +143,7 @@ if (url.pathname === "/test") {
 };
 
 async function populateIndex(env: Env): Promise<Response> {
+	const startTime = Date.now();
 	try {
 		const vectors = [];
 
@@ -168,10 +169,14 @@ async function populateIndex(env: Env): Promise<Response> {
 		// Insert into Vectorize
 		await env.VECTORIZE.insert(vectors);
 
+		const duration = Date.now() - startTime;
+
 		return new Response(
 			JSON.stringify({
 				success: true,
 				message: `Inserted ${vectors.length} vectors into the index`,
+				duration: `${duration}ms`,
+				model: "@cf/baai/bge-small-en-v1.5",
 			}),
 			{
 				headers: { "Content-Type": "application/json" },
@@ -191,20 +196,41 @@ async function populateIndex(env: Env): Promise<Response> {
 }
 
 async function searchIndex(query: string, topK: number, env: Env): Promise<Response> {
+	const startTime = Date.now();
+	
 	try {
-		// Generate embedding for the query
+		// Validate topK
+		if (topK < 1 || topK > 20) {
+			return new Response(
+				JSON.stringify({
+					error: "topK must be between 1 and 20",
+				}),
+				{
+					status: 400,
+					headers: { "Content-Type": "application/json" },
+				}
+			);
+		}
+
+		// Generate embedding for the query (start timing here for accuracy)
+		const embeddingStart = Date.now();
 		const response = await env.AI.run("@cf/baai/bge-small-en-v1.5", {
 			text: query,
 		});
+		const embeddingTime = Date.now() - embeddingStart;
 
 		// Handle the response type properly
 		const queryEmbedding = Array.isArray(response) ? response : (response as any).data[0];
 
 		// Search Vectorize
+		const searchStart = Date.now();
 		const results = await env.VECTORIZE.query(queryEmbedding, {
 			topK,
 			returnMetadata: true,
 		});
+		const searchTime = Date.now() - searchStart;
+
+		const totalTime = Date.now() - startTime;
 
 		return new Response(
 			JSON.stringify({
@@ -217,6 +243,11 @@ async function searchIndex(query: string, topK: number, env: Env): Promise<Respo
 					content: match.metadata?.content,
 					category: match.metadata?.category,
 				})),
+				performance: {
+					embeddingTime: `${embeddingTime}ms`,
+					searchTime: `${searchTime}ms`,
+					totalTime: `${totalTime}ms`,
+				},
 			}),
 			{
 				headers: { "Content-Type": "application/json" },
@@ -226,6 +257,7 @@ async function searchIndex(query: string, topK: number, env: Env): Promise<Respo
 		return new Response(
 			JSON.stringify({
 				error: error instanceof Error ? error.message : "Unknown error",
+				hint: "Make sure the index is populated with /populate first",
 			}),
 			{
 				status: 500,
