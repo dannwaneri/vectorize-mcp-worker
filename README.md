@@ -509,6 +509,33 @@ wrangler deploy
    - Query parameter validation
    - JSON parsing error handling
 
+
+## 💼 Professional Services
+
+**Need help deploying this?**
+
+I offer full-service deployment:
+- **Setup:** $2,500 (one-time)
+- **Timeline:** 48 hours
+- **Includes:** 
+  - Vectorize index configuration
+  - Document indexing (up to 10K docs)
+  - API authentication setup
+  - Full documentation
+  - 2 weeks support
+
+**Your ongoing costs:** ~$10/month (paid directly to Cloudflare)
+
+**Your savings:** $1,800-2,300+/year vs traditional solutions
+
+**[Hire me on Upwork](https://www.upwork.com/freelancers/~01d5946abaa558d9aa?mp_source=share)** |
+
+---
+
+**Need ongoing support?**
+- Monthly retainer: $500/month
+- Includes: Updates, monitoring, feature additions
+
 ## Contributing
 
 Contributions welcome! Areas that need help:
@@ -537,5 +564,3 @@ MIT License - see [LICENSE](LICENSE) file for details.
 **⭐ If this saved you money, star the repo!**
 
 **💬 Questions? [Open an issue](https://github.com/dannwaneri/vectorize-mcp-worker/issues)**
-
-**🚀 Need help deploying? [Hire me on Upwork](https://www.upwork.com/freelancers/~01d5946abaa558d9aa?mp_source=share)**
