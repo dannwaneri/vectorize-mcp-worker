@@ -2,6 +2,9 @@ name = "vectorize-mcp-worker"
 main = "src/index.ts"
 compatibility_date = "2025-12-02"
 
+[observability]
+enabled = true
+
 [ai]
 binding = "AI"
 
