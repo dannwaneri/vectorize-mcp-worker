@@ -1,24 +1,47 @@
-import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
+import { SELF } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
-import worker from '../src/index';
+import worker, { type Env } from '../src/index';
 
-// For now, you'll need to do something like this to get a correctly-typed
-// `Request` to pass to `worker.fetch()`.
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
 
-describe('Hello World worker', () => {
-	it('responds with Hello World! (unit style)', async () => {
+const mockEnv: Env = {
+	AI: {
+		run: async () => [0.01, 0.02],
+	} as unknown as Env['AI'],
+	VECTORIZE: {
+		describe: async () => ({
+			id: 'test-index',
+			name: 'test-index',
+			config: { dimensions: 384, metric: 'cosine' },
+			vectorsCount: 0,
+		}),
+		query: async () => ({ matches: [], count: 0 }),
+		insert: async () => ({ ids: [], count: 0 }),
+		upsert: async () => ({ ids: [], count: 0 }),
+		deleteByIds: async () => ({ ids: [], count: 0 }),
+		getByIds: async () => [],
+	} as Env['VECTORIZE'],
+};
+
+describe('Vectorize MCP Worker', () => {
+	it('responds with API documentation JSON (unit style)', async () => {
 		const request = new IncomingRequest('http://example.com');
-		// Create an empty context to pass to `worker.fetch()`.
-		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, env, ctx);
-		// Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
-		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+		const response = await worker.fetch(request, mockEnv);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('application/json');
+
+		const data = await response.json() as { name: string; version: string };
+		expect(data).toMatchObject({
+			name: 'Vectorize MCP Worker',
+			version: '1.0.0',
+		});
 	});
 
-	it('responds with Hello World! (integration style)', async () => {
+	it('responds with API documentation JSON (integration style)', async () => {
 		const response = await SELF.fetch('https://example.com');
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+		const data = await response.json() as { name: string };
+
+		expect(data.name).toBe('Vectorize MCP Worker');
 	});
 });
