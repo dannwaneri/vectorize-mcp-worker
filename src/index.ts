@@ -223,8 +223,8 @@ const ingestion = new IngestionEngine();
 function authenticate(request: Request, env: Env): Response | null {
 	const url = new URL(request.url);
 	
-	// Skip auth for test endpoint, root, and dashboard
-	if (url.pathname === "/" || url.pathname === "/test" || url.pathname === "/dashboard") {
+	// Skip auth for test endpoint, root, dashboard, and llms.txt
+	if (url.pathname === "/" || url.pathname === "/test" || url.pathname === "/dashboard" || url.pathname === "/llms.txt") {
 		return null;
 	}
 
@@ -335,6 +335,13 @@ export default {
 		if (url.pathname === "/dashboard" && request.method === "GET") {
 			return new Response(getDashboardHTML(), {
 				headers: { "Content-Type": "text/html" },
+			});
+		}
+
+		// llms.txt - AI search engine optimization
+		if (url.pathname === "/llms.txt" && request.method === "GET") {
+			return new Response(getLlmsTxt(), {
+				headers: { "Content-Type": "text/plain" },
 			});
 		}
 
@@ -481,6 +488,29 @@ function getDashboardHTML(): string {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vectorize MCP Worker - Dashboard</title>
+<meta name="description" content="Production-Grade Hybrid RAG on Cloudflare Edge with Vector + BM25 search, RRF, and reranking">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Vectorize MCP Worker",
+  "description": "Production-Grade Hybrid RAG on Cloudflare Edge combining vector similarity with BM25 keyword matching",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Cloudflare Workers",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Daniel Nwaneri",
+    "url": "https://github.com/dannwaneri"
+  },
+  "softwareVersion": "2.0.0",
+  "url": "https://github.com/dannwaneri/vectorize-mcp-worker"
+}
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh;padding:20px}
@@ -679,4 +709,53 @@ testAuth();
 </script>
 </body>
 </html>`;
+}
+
+// llms.txt for AI search engines
+function getLlmsTxt(): string {
+	return `# Vectorize MCP Worker
+> Production-Grade Hybrid RAG on Cloudflare Edge
+
+## Overview
+A semantic search API combining vector similarity with BM25 keyword matching, using Reciprocal Rank Fusion (RRF) and cross-encoder reranking for optimal results.
+
+## Capabilities
+- Hybrid search (Vector + BM25)
+- Reciprocal Rank Fusion
+- Cross-encoder reranking
+- Recursive document chunking with 15% overlap
+- Sub-second latency at edge
+
+## API Endpoints
+- POST /search - Hybrid semantic search
+- POST /ingest - Document ingestion with auto-chunking  
+- DELETE /documents/:id - Remove documents
+- GET /stats - Index statistics
+- GET /dashboard - Interactive UI
+
+## Technical Stack
+- Runtime: Cloudflare Workers
+- Vector DB: Cloudflare Vectorize
+- SQL: Cloudflare D1
+- Embedding: @cf/baai/bge-small-en-v1.5 (384 dimensions)
+- Reranker: @cf/baai/bge-reranker-base
+
+## Use Cases
+- Knowledge base search
+- Document retrieval
+- Semantic Q&A systems
+- RAG pipelines
+
+## Integration
+\`\`\`bash
+curl -X POST /search -H "Content-Type: application/json" -d '{"query": "your question", "topK": 5}'
+\`\`\`
+
+## Author
+Daniel Nwaneri - https://github.com/dannwaneri
+
+## Links
+- GitHub: https://github.com/dannwaneri/vectorize-mcp-worker
+- Dashboard: /dashboard
+`;
 }
