@@ -36,3 +36,18 @@ CREATE INDEX IF NOT EXISTS idx_keywords_doc ON keywords(document_id);
 CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_id);
 
 INSERT OR IGNORE INTO doc_stats (id, total_documents, avg_doc_length) VALUES (1, 0, 0);
+
+
+
+-- Licenses table for one-time payment model
+CREATE TABLE IF NOT EXISTS licenses (
+    license_key TEXT PRIMARY KEY,
+    email TEXT,
+    plan TEXT DEFAULT 'standard',
+    max_documents INTEGER DEFAULT 10000,
+    max_queries_per_day INTEGER DEFAULT 1000,
+    created_at TEXT DEFAULT (datetime('now')),
+    is_active INTEGER DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_licenses_email ON licenses(email);

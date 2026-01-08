@@ -305,15 +305,21 @@ export default {
 						"Reciprocal Rank Fusion (RRF)",
 						"Cross-Encoder Reranking",
 						"Recursive Chunking with 15% overlap",
+						"One-time License System",
 					],
 					endpoints: {
 						"GET /": "API documentation",
 						"GET /dashboard": "Interactive playground UI",
+						"GET /llms.txt": "AI search engine info",
 						"GET /test": "Health check",
 						"GET /stats": "Index statistics",
 						"POST /search": "Hybrid search (query, topK, rerank)",
 						"POST /ingest": "Ingest document with auto-chunking",
 						"DELETE /documents/:id": "Delete document",
+						"POST /license/validate": "Validate a license key",
+						"POST /license/create": "Create license (admin)",
+						"GET /license/list": "List all licenses (admin)",
+						"POST /license/revoke": "Revoke a license (admin)",
 					},
 					models: {
 						embedding: "@cf/baai/bge-small-en-v1.5",
@@ -463,6 +469,65 @@ export default {
 			return new Response(JSON.stringify({ success: true, deleted: docId }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
 		}
 
+		// License: Validate
+		if (url.pathname === "/license/validate" && request.method === "POST") {
+			try {
+				const body = await request.json<{ license_key: string }>();
+				if (!body.license_key) {
+					return new Response(JSON.stringify({ valid: false, error: "Missing license_key" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+				}
+				const license = await env.DB.prepare("SELECT * FROM licenses WHERE license_key = ? AND is_active = 1").bind(body.license_key).first<{ license_key: string; email: string; plan: string; max_documents: number; max_queries_per_day: number; created_at: string }>();
+				if (!license) {
+					return new Response(JSON.stringify({ valid: false, error: "Invalid or inactive license" }), { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+				}
+				return new Response(JSON.stringify({ valid: true, plan: license.plan, limits: { maxDocuments: license.max_documents, maxQueriesPerDay: license.max_queries_per_day }, createdAt: license.created_at }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			} catch (error) {
+				return new Response(JSON.stringify({ valid: false, error: "Validation failed" }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			}
+		}
+
+		// License: Create (admin only - requires API_KEY)
+		if (url.pathname === "/license/create" && request.method === "POST") {
+			try {
+				const body = await request.json<{ email: string; plan?: string; max_documents?: number; max_queries_per_day?: number }>();
+				if (!body.email) {
+					return new Response(JSON.stringify({ error: "Email required" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+				}
+				const licenseKey = `lic_${crypto.randomUUID().replace(/-/g, '')}`;
+				const plan = body.plan || 'standard';
+				const maxDocs = body.max_documents || (plan === 'enterprise' ? 100000 : plan === 'pro' ? 50000 : 10000);
+				const maxQueries = body.max_queries_per_day || (plan === 'enterprise' ? 10000 : plan === 'pro' ? 5000 : 1000);
+				await env.DB.prepare("INSERT INTO licenses (license_key, email, plan, max_documents, max_queries_per_day) VALUES (?, ?, ?, ?, ?)").bind(licenseKey, body.email, plan, maxDocs, maxQueries).run();
+				return new Response(JSON.stringify({ success: true, license_key: licenseKey, email: body.email, plan, limits: { maxDocuments: maxDocs, maxQueriesPerDay: maxQueries } }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			} catch (error) {
+				return new Response(JSON.stringify({ error: "Failed to create license", message: error instanceof Error ? error.message : "Unknown" }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			}
+		}
+
+		// License: List (admin only)
+		if (url.pathname === "/license/list" && request.method === "GET") {
+			try {
+				const licenses = await env.DB.prepare("SELECT license_key, email, plan, max_documents, max_queries_per_day, created_at, is_active FROM licenses ORDER BY created_at DESC LIMIT 100").all();
+				return new Response(JSON.stringify({ licenses: licenses.results }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			} catch (error) {
+				return new Response(JSON.stringify({ error: "Failed to list licenses" }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			}
+		}
+
+		// License: Revoke (admin only)
+		if (url.pathname === "/license/revoke" && request.method === "POST") {
+			try {
+				const body = await request.json<{ license_key: string }>();
+				if (!body.license_key) {
+					return new Response(JSON.stringify({ error: "license_key required" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+				}
+				await env.DB.prepare("UPDATE licenses SET is_active = 0 WHERE license_key = ?").bind(body.license_key).run();
+				return new Response(JSON.stringify({ success: true, revoked: body.license_key }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			} catch (error) {
+				return new Response(JSON.stringify({ error: "Failed to revoke license" }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			}
+		}
+
 		// 404 for unknown routes
 		return new Response(
 			JSON.stringify({
@@ -504,7 +569,7 @@ function getDashboardHTML(): string {
   },
   "author": {
     "@type": "Person",
-    "name": "Daniel Nwaneri",
+    "name": "Danny Waneri",
     "url": "https://github.com/dannwaneri"
   },
   "softwareVersion": "2.0.0",
@@ -513,49 +578,61 @@ function getDashboardHTML(): string {
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh;padding:20px}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh;padding:12px}
 .container{max-width:1200px;margin:0 auto}
-h1{font-size:1.5rem;margin-bottom:8px;color:#fff}
-.subtitle{color:#888;margin-bottom:24px;font-size:0.9rem}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-@media(max-width:768px){.grid{grid-template-columns:1fr}}
-.card{background:#171717;border:1px solid #262626;border-radius:12px;padding:20px}
-.card h2{font-size:1rem;margin-bottom:16px;color:#fff;display:flex;align-items:center;gap:8px}
-.card h2 span{font-size:1.2rem}
-label{display:block;font-size:0.8rem;color:#888;margin-bottom:6px}
-input,textarea,select{width:100%;padding:10px 12px;background:#262626;border:1px solid #404040;border-radius:8px;color:#fff;font-size:0.9rem;margin-bottom:12px}
+h1{font-size:1.3rem;margin-bottom:8px;color:#fff}
+.subtitle{color:#888;margin-bottom:20px;font-size:0.85rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{background:#171717;border:1px solid #262626;border-radius:12px;padding:16px}
+.card h2{font-size:0.95rem;margin-bottom:14px;color:#fff;display:flex;align-items:center;gap:8px}
+.card h2 span{font-size:1.1rem}
+label{display:block;font-size:0.75rem;color:#888;margin-bottom:6px}
+input,textarea,select{width:100%;padding:10px 12px;background:#262626;border:1px solid #404040;border-radius:8px;color:#fff;font-size:16px;margin-bottom:12px}
 input:focus,textarea:focus{outline:none;border-color:#3b82f6}
-textarea{resize:vertical;min-height:120px;font-family:inherit}
-button{background:#3b82f6;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:500;width:100%;transition:background 0.2s}
+textarea{resize:vertical;min-height:100px;font-family:inherit}
+button{background:#3b82f6;color:#fff;border:none;padding:10px 16px;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:500;width:100%;transition:background 0.2s}
 button:hover{background:#2563eb}
 button:disabled{background:#404040;cursor:not-allowed}
-.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
-.stat{background:#262626;padding:12px;border-radius:8px;text-align:center}
-.stat-value{font-size:1.25rem;font-weight:600;color:#3b82f6}
-.stat-label{font-size:0.7rem;color:#888;margin-top:4px}
-.results{margin-top:16px;max-height:400px;overflow-y:auto}
-.result{background:#262626;padding:12px;border-radius:8px;margin-bottom:8px;border-left:3px solid #3b82f6}
-.result-header{display:flex;justify-content:space-between;margin-bottom:8px}
-.result-id{font-size:0.75rem;color:#888}
-.result-score{font-size:0.75rem;color:#22c55e;font-weight:600}
-.result-content{font-size:0.85rem;color:#d4d4d4;line-height:1.5}
-.result-category{display:inline-block;font-size:0.7rem;background:#3b82f6;color:#fff;padding:2px 8px;border-radius:4px;margin-top:8px}
-.perf{margin-top:16px;padding:12px;background:#262626;border-radius:8px}
-.perf-title{font-size:0.75rem;color:#888;margin-bottom:8px}
-.perf-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.perf-item{font-size:0.8rem}
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.stat{background:#262626;padding:10px;border-radius:8px;text-align:center}
+.stat-value{font-size:1.1rem;font-weight:600;color:#3b82f6}
+.stat-label{font-size:0.65rem;color:#888;margin-top:4px}
+.results{margin-top:14px;max-height:350px;overflow-y:auto}
+.result{background:#262626;padding:10px;border-radius:8px;margin-bottom:8px;border-left:3px solid #3b82f6}
+.result-header{display:flex;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:4px}
+.result-id{font-size:0.7rem;color:#888;word-break:break-all}
+.result-score{font-size:0.7rem;color:#22c55e;font-weight:600}
+.result-content{font-size:0.8rem;color:#d4d4d4;line-height:1.4;word-break:break-word}
+.result-category{display:inline-block;font-size:0.65rem;background:#3b82f6;color:#fff;padding:2px 6px;border-radius:4px;margin-top:6px}
+.perf{margin-top:14px;padding:10px;background:#262626;border-radius:8px}
+.perf-title{font-size:0.7rem;color:#888;margin-bottom:6px}
+.perf-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.perf-item{font-size:0.75rem}
 .perf-item span{color:#22c55e}
-.log{font-size:0.8rem;color:#888;margin-top:8px;padding:8px;background:#1a1a1a;border-radius:4px;max-height:100px;overflow-y:auto}
+.log{font-size:0.75rem;color:#888;margin-top:8px;padding:8px;background:#1a1a1a;border-radius:4px;max-height:80px;overflow-y:auto;word-break:break-word}
 .success{color:#22c55e}
 .error{color:#ef4444}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;margin-left:8px}
 .badge-green{background:#166534;color:#86efac}
 .badge-yellow{background:#854d0e;color:#fef08a}
-.auth-section{margin-bottom:20px;padding:16px;background:#1c1917;border:1px solid #44403c;border-radius:8px}
+.auth-section{margin-bottom:16px;padding:14px;background:#1c1917;border:1px solid #44403c;border-radius:8px}
 .auth-section label{color:#fbbf24}
 .flex{display:flex;gap:8px}
-.flex input{margin-bottom:0}
-.flex button{width:auto;padding:10px 16px}
+.flex input{margin-bottom:0;flex:1}
+.flex button{width:auto;padding:10px 16px;flex-shrink:0}
+.search-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.search-row input{flex:1;min-width:150px;margin-bottom:0}
+.search-row select{width:70px;margin-bottom:0;flex-shrink:0}
+.search-row button{width:auto;padding:10px 20px;flex-shrink:0}
+@media(max-width:768px){
+.grid{grid-template-columns:1fr}
+.grid .card:last-child{grid-column:1}
+.stats-grid{grid-template-columns:repeat(3,1fr)}
+.perf-grid{grid-template-columns:1fr}
+.search-row{flex-direction:column}
+.search-row input,.search-row select,.search-row button{width:100%}
+body{padding:10px}
+}
 </style>
 </head>
 <body>
@@ -597,14 +674,14 @@ button:disabled{background:#404040;cursor:not-allowed}
 
 <div class="card" style="grid-column:span 2">
 <h2><span>🔎</span> Search</h2>
-<div class="flex" style="margin-bottom:12px">
-<input type="text" id="searchQuery" placeholder="Enter your search query..." style="margin-bottom:0">
-<select id="topK" style="width:80px;margin-bottom:0">
+<div class="search-row">
+<input type="text" id="searchQuery" placeholder="Enter your search query...">
+<select id="topK">
 <option value="3">Top 3</option>
 <option value="5" selected>Top 5</option>
 <option value="10">Top 10</option>
 </select>
-<button onclick="search()" style="width:auto;padding:10px 24px">Search</button>
+<button onclick="search()">Search</button>
 </div>
 <label><input type="checkbox" id="useRerank" checked> Use Reranker</label>
 <div id="searchResults" class="results"></div>
@@ -752,7 +829,7 @@ curl -X POST /search -H "Content-Type: application/json" -d '{"query": "your que
 \`\`\`
 
 ## Author
-Daniel Nwaneri - https://github.com/dannwaneri
+Danny Waneri - https://github.com/dannwaneri
 
 ## Links
 - GitHub: https://github.com/dannwaneri/vectorize-mcp-worker
