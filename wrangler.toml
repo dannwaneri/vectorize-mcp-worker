@@ -9,9 +9,12 @@ binding = "AI"
 binding = "VECTORIZE"
 index_name = "mcp-knowledge-base"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "mcp-knowledge-db"
+database_id = "acba4671-52e3-458e-8115-d000f31c32b1"
+
 [observability]
 enabled = true
 
-# To set API key for production:
 # wrangler secret put API_KEY
-# Then enter your key when prompted

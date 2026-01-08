@@ -1,52 +1,223 @@
 export interface Env {
 	AI: Ai;
 	VECTORIZE: VectorizeIndex;
-	API_KEY?: string; // Optional: for production authentication
+	DB: D1Database;
+	API_KEY?: string;
 }
 
-// Our knowledge base data
-const knowledgeBase = [
-	{
-		id: "1",
-		content: "FPL Hub handles 500,000+ API calls daily with 99.9% uptime using Cloudflare Workers",
-		category: "product",
-	},
-	{
-		id: "2",
-		content: "Cloudflare Workers AI provides access to LLMs like Llama, Mistral, and embedding models at the edge",
-		category: "ai",
-	},
-	{
-		id: "3",
-		content: "Vectorize supports vector dimensions up to 1536 and uses HNSW indexing for fast similarity search",
-		category: "vectorize",
-	},
-	{
-		id: "4",
-		content: "MCP (Model Context Protocol) enables LLMs to securely access external data sources and tools",
-		category: "mcp",
-	},
-	{
-		id: "5",
-		content: "TypeScript MCP SDK provides server and client implementations with full type safety",
-		category: "mcp",
-	},
-	{
-		id: "6",
-		content: "D1 database queries return results in under 10ms within the same region using bound statements",
-		category: "database",
-	},
-	{
-		id: "7",
-		content: "RAG systems typically use chunk sizes of 500-1000 tokens with 10-20% overlap for optimal retrieval",
-		category: "ai",
-	},
-	{
-		id: "8",
-		content: "Workers AI embedding model 'bge-small-en-v1.5' produces 384-dimensional vectors optimized for English text",
-		category: "ai",
-	},
-];
+// Types
+interface Document {
+	id: string;
+	content: string;
+	title?: string;
+	source?: string;
+	category?: string;
+}
+
+interface Chunk {
+	id: string;
+	content: string;
+	parentId: string;
+	chunkIndex: number;
+}
+
+interface SearchResult {
+	id: string;
+	content: string;
+	score: number;
+	category?: string;
+	source: 'vector' | 'keyword' | 'hybrid';
+}
+
+interface HybridSearchResult extends SearchResult {
+	vectorScore?: number;
+	keywordScore?: number;
+	rerankerScore?: number;
+	rrfScore: number;
+}
+
+// Chunking Engine - respects semantic boundaries with 15% overlap
+class ChunkingEngine {
+	private maxChunkSize = 512;
+	private overlapPercent = 0.15;
+	private minChunkSize = 100;
+
+	chunk(text: string, documentId: string): Chunk[] {
+		const chunks: Chunk[] = [];
+		const paragraphs = text.split(/\n\n+/).filter(p => p.trim());
+		let currentChunk = '';
+		let chunkIndex = 0;
+		const overlapSize = Math.floor(this.maxChunkSize * this.overlapPercent);
+
+		for (const paragraph of paragraphs) {
+			if ((currentChunk + '\n\n' + paragraph).length > this.maxChunkSize && currentChunk.trim()) {
+				chunks.push({ id: `${documentId}-chunk-${chunkIndex++}`, content: currentChunk.trim(), parentId: documentId, chunkIndex: chunkIndex - 1 });
+				currentChunk = currentChunk.slice(-overlapSize);
+			}
+			currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+		}
+		if (currentChunk.trim().length >= this.minChunkSize) {
+			chunks.push({ id: `${documentId}-chunk-${chunkIndex}`, content: currentChunk.trim(), parentId: documentId, chunkIndex });
+		}
+		return chunks.length > 0 ? chunks : [{ id: `${documentId}-chunk-0`, content: text.trim(), parentId: documentId, chunkIndex: 0 }];
+	}
+}
+
+// Keyword Search Engine (BM25)
+class KeywordSearchEngine {
+	private k1 = 1.2;
+	private b = 0.75;
+	private stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'this', 'that', 'it', 'they', 'have', 'has', 'had']);
+
+	tokenize(text: string): string[] {
+		return text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(t => t.length > 2 && !this.stopWords.has(t));
+	}
+
+	async indexDocument(db: D1Database, docId: string, content: string): Promise<void> {
+		const tokens = this.tokenize(content);
+		const termFreq = new Map<string, number>();
+		tokens.forEach(t => termFreq.set(t, (termFreq.get(t) || 0) + 1));
+
+		const batch: D1PreparedStatement[] = [];
+		for (const [term, count] of termFreq) {
+			batch.push(db.prepare('INSERT INTO keywords (document_id, term, term_frequency) VALUES (?, ?, ?)').bind(docId, term, count));
+			batch.push(db.prepare('INSERT INTO term_stats (term, document_frequency) VALUES (?, 1) ON CONFLICT(term) DO UPDATE SET document_frequency = document_frequency + 1').bind(term));
+		}
+		batch.push(db.prepare('UPDATE doc_stats SET total_documents = total_documents + 1, avg_doc_length = ((avg_doc_length * total_documents) + ?) / (total_documents + 1) WHERE id = 1').bind(tokens.length));
+		if (batch.length > 0) await db.batch(batch);
+	}
+
+	async search(db: D1Database, query: string, topK: number): Promise<SearchResult[]> {
+		const tokens = this.tokenize(query);
+		if (!tokens.length) return [];
+
+		const stats = await db.prepare('SELECT total_documents, avg_doc_length FROM doc_stats WHERE id = 1').first<{ total_documents: number; avg_doc_length: number }>();
+		if (!stats?.total_documents) return [];
+
+		const placeholders = tokens.map(() => '?').join(',');
+		const results = await db.prepare(`SELECT d.id, d.content, d.category, k.term, k.term_frequency, LENGTH(d.content) as doc_length, ts.document_frequency FROM documents d JOIN keywords k ON d.id = k.document_id JOIN term_stats ts ON k.term = ts.term WHERE k.term IN (${placeholders})`).bind(...tokens).all<{ id: string; content: string; category: string; term_frequency: number; doc_length: number; document_frequency: number }>();
+
+		const scores = new Map<string, { score: number; content: string; category: string }>();
+		for (const r of results.results) {
+			const idf = Math.log((stats.total_documents - r.document_frequency + 0.5) / (r.document_frequency + 0.5) + 1);
+			const tf = (r.term_frequency * (this.k1 + 1)) / (r.term_frequency + this.k1 * (1 - this.b + this.b * (r.doc_length / stats.avg_doc_length)));
+			const existing = scores.get(r.id);
+			if (existing) existing.score += idf * tf;
+			else scores.set(r.id, { score: idf * tf, content: r.content, category: r.category });
+		}
+
+		return Array.from(scores.entries()).sort((a, b) => b[1].score - a[1].score).slice(0, topK).map(([id, d]) => ({ id, content: d.content, score: d.score, category: d.category, source: 'keyword' as const }));
+	}
+}
+
+// Hybrid Search with RRF
+class HybridSearchEngine {
+	private rrfK = 60;
+	private keywordEngine = new KeywordSearchEngine();
+
+	reciprocalRankFusion(vectorResults: SearchResult[], keywordResults: SearchResult[]): HybridSearchResult[] {
+		const scores = new Map<string, HybridSearchResult>();
+		vectorResults.forEach((r, rank) => scores.set(r.id, { ...r, vectorScore: r.score, rrfScore: 1 / (this.rrfK + rank + 1), source: 'hybrid' }));
+		keywordResults.forEach((r, rank) => {
+			const existing = scores.get(r.id);
+			if (existing) { existing.keywordScore = r.score; existing.rrfScore += 1 / (this.rrfK + rank + 1); }
+			else scores.set(r.id, { ...r, keywordScore: r.score, rrfScore: 1 / (this.rrfK + rank + 1), source: 'hybrid' });
+		});
+		return Array.from(scores.values()).sort((a, b) => b.rrfScore - a.rrfScore);
+	}
+
+	async search(query: string, env: Env, topK: number, useReranker: boolean): Promise<{ results: HybridSearchResult[]; performance: Record<string, string> }> {
+		const start = Date.now();
+		const perf: Record<string, string> = {};
+
+		// Vector search
+		const embStart = Date.now();
+		const embResp = await env.AI.run('@cf/baai/bge-small-en-v1.5', { text: query });
+		const embedding = Array.isArray(embResp) ? embResp : (embResp as any).data[0];
+		perf.embeddingTime = `${Date.now() - embStart}ms`;
+
+		const vecStart = Date.now();
+		const vecResults = await env.VECTORIZE.query(embedding, { topK: topK * 2, returnMetadata: true });
+		perf.vectorSearchTime = `${Date.now() - vecStart}ms`;
+
+		const vectorSearchResults: SearchResult[] = vecResults.matches.map(m => ({ id: m.id, content: (m.metadata?.content as string) || '', score: m.score, category: m.metadata?.category as string, source: 'vector' as const }));
+
+		// Keyword search (if D1 available)
+		let keywordResults: SearchResult[] = [];
+		if (env.DB) {
+			const kwStart = Date.now();
+			keywordResults = await this.keywordEngine.search(env.DB, query, topK * 2);
+			perf.keywordSearchTime = `${Date.now() - kwStart}ms`;
+		}
+
+		// RRF
+		let results = this.reciprocalRankFusion(vectorSearchResults, keywordResults);
+
+		// Rerank
+		if (useReranker && results.length > 0) {
+			const reStart = Date.now();
+			try {
+				const reResp = await env.AI.run('@cf/baai/bge-reranker-base', { query, contexts: results.slice(0, 10).map(r => ({ text: r.content })) } as any);
+				results = results.slice(0, 10).map((r, i) => ({ ...r, rerankerScore: (reResp as any)?.data?.[i]?.score || 0, rrfScore: r.rrfScore * 0.4 + ((reResp as any)?.data?.[i]?.score || 0) * 0.6 })).sort((a, b) => b.rrfScore - a.rrfScore);
+			} catch (e) { console.error('Reranker error:', e); }
+			perf.rerankerTime = `${Date.now() - reStart}ms`;
+		}
+
+		perf.totalTime = `${Date.now() - start}ms`;
+		return { results: results.slice(0, topK), performance: perf };
+	}
+}
+
+// Ingestion Engine
+class IngestionEngine {
+	private chunker = new ChunkingEngine();
+	private kwEngine = new KeywordSearchEngine();
+
+	async ingest(doc: Document, env: Env): Promise<{ success: boolean; chunks: number; performance: Record<string, string> }> {
+		const start = Date.now();
+		const perf: Record<string, string> = {};
+
+		// De-duplicate
+		if (env.DB) {
+			const existing = await env.DB.prepare('SELECT id FROM documents WHERE id = ? OR parent_id = ?').bind(doc.id, doc.id).first();
+			if (existing) await this.delete(doc.id, env);
+		}
+
+		const chunks = this.chunker.chunk(doc.content, doc.id);
+		const vectors: VectorizeVector[] = [];
+
+		const embStart = Date.now();
+		for (const chunk of chunks) {
+			if (env.DB) {
+				await env.DB.prepare('INSERT INTO documents (id, content, title, source, category, chunk_index, parent_id, word_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(chunk.id, chunk.content, doc.title || null, doc.source || null, doc.category || null, chunk.chunkIndex, chunk.parentId, chunk.content.split(/\s+/).length).run();
+				await this.kwEngine.indexDocument(env.DB, chunk.id, chunk.content);
+			}
+			const embResp = await env.AI.run('@cf/baai/bge-small-en-v1.5', { text: chunk.content });
+			const emb = Array.isArray(embResp) ? embResp : (embResp as any).data[0];
+			vectors.push({ id: chunk.id, values: emb, metadata: { content: chunk.content, category: doc.category || '', parentId: chunk.parentId, chunkIndex: chunk.chunkIndex } });
+		}
+		perf.embeddingTime = `${Date.now() - embStart}ms`;
+
+		if (vectors.length) await env.VECTORIZE.upsert(vectors);
+		perf.totalTime = `${Date.now() - start}ms`;
+
+		return { success: true, chunks: chunks.length, performance: perf };
+	}
+
+	async delete(docId: string, env: Env): Promise<void> {
+		if (env.DB) {
+			const chunks = await env.DB.prepare('SELECT id FROM documents WHERE id = ? OR parent_id = ?').bind(docId, docId).all<{ id: string }>();
+			const ids = chunks.results.map(c => c.id);
+			if (ids.length) {
+				await env.VECTORIZE.deleteByIds(ids);
+				await env.DB.prepare('DELETE FROM documents WHERE id = ? OR parent_id = ?').bind(docId, docId).run();
+			}
+		}
+	}
+}
+
+const hybridSearch = new HybridSearchEngine();
+const ingestion = new IngestionEngine();
 
 // Authentication middleware
 function authenticate(request: Request, env: Env): Response | null {
@@ -100,7 +271,7 @@ function authenticate(request: Request, env: Env): Response | null {
 function corsHeaders() {
 	return {
 		"Access-Control-Allow-Origin": "*",
-		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+		"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 		"Access-Control-Allow-Headers": "Content-Type, Authorization",
 	};
 }
@@ -127,14 +298,25 @@ export default {
 			return new Response(
 				JSON.stringify({
 					name: "Vectorize MCP Worker",
-					version: "1.0.0",
-					description: "High-performance semantic search on Cloudflare Edge",
+					version: "2.0.0",
+					description: "Production-Grade Hybrid RAG on Cloudflare Edge",
+					features: [
+						"Hybrid Search (Vector + BM25)",
+						"Reciprocal Rank Fusion (RRF)",
+						"Cross-Encoder Reranking",
+						"Recursive Chunking with 15% overlap",
+					],
 					endpoints: {
-						"POST /populate": "Populate the vector index with knowledge base",
-						"POST /search": "Search the index (requires 'query' and optional 'topK' in body)",
-						"POST /insert": "Insert a single document into the index",
-						"GET /test": "Check service health and bindings",
-						"GET /stats": "Get index statistics",
+						"GET /": "API documentation",
+						"GET /test": "Health check",
+						"GET /stats": "Index statistics",
+						"POST /search": "Hybrid search (query, topK, rerank)",
+						"POST /ingest": "Ingest document with auto-chunking",
+						"DELETE /documents/:id": "Delete document",
+					},
+					models: {
+						embedding: "@cf/baai/bge-small-en-v1.5",
+						reranker: "@cf/baai/bge-reranker-base",
 					},
 					authentication: env.API_KEY ? "required" : "disabled (dev mode)",
 					docs: "https://github.com/dannwaneri/vectorize-mcp-worker",
@@ -150,6 +332,8 @@ export default {
 
 		// Test endpoint to check bindings
 		if (url.pathname === "/test" && request.method === "GET") {
+			let dbOk = false;
+			if (env.DB) { try { await env.DB.prepare('SELECT 1').first(); dbOk = true; } catch {} }
 			return new Response(
 				JSON.stringify({
 					status: "healthy",
@@ -157,6 +341,7 @@ export default {
 					bindings: {
 						hasAI: !!env.AI,
 						hasVectorize: !!env.VECTORIZE,
+						hasD1: !!env.DB && dbOk,
 						hasAPIKey: !!env.API_KEY,
 					},
 					mode: env.API_KEY ? "production" : "development",
@@ -173,13 +358,15 @@ export default {
 		// Stats endpoint
 		if (url.pathname === "/stats" && request.method === "GET") {
 			try {
-				// Get index info
 				const stats = await env.VECTORIZE.describe();
-				
+				let docStats = null;
+				if (env.DB) {
+					docStats = await env.DB.prepare('SELECT total_documents, avg_doc_length FROM doc_stats WHERE id = 1').first();
+				}
 				return new Response(
 					JSON.stringify({
 						index: stats,
-						knowledgeBaseSize: knowledgeBase.length,
+						documents: docStats,
 						model: "@cf/baai/bge-small-en-v1.5",
 						dimensions: 384,
 					}),
@@ -207,52 +394,58 @@ export default {
 			}
 		}
 
-		// Route: Populate the index
-		if (url.pathname === "/populate" && request.method === "POST") {
-			return await populateIndex(env);
-		}
-
-		// Route: Search the index
+		// Hybrid Search
 		if (url.pathname === "/search" && request.method === "POST") {
 			try {
-				const body = await request.json<{ query: string; topK?: number; filter?: Record<string, any> }>();
-				
+				const body = await request.json<{ query: string; topK?: number; rerank?: boolean }>();
 				if (!body.query) {
-					return new Response(
-						JSON.stringify({
-							error: "Missing 'query' field in request body",
-						}),
-						{
-							status: 400,
-							headers: { 
-								"Content-Type": "application/json",
-								...corsHeaders(),
-							},
-						}
-					);
+					return new Response(JSON.stringify({ error: "Missing 'query' field in request body" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
 				}
-
-				const { query, topK = 5, filter } = body;
-				return await searchIndex(query, topK, env, filter);
-			} catch (error) {
+				const topK = body.topK || 5;
+				if (topK < 1 || topK > 20) {
+					return new Response(JSON.stringify({ error: "topK must be between 1 and 20" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+				}
+				const { results, performance } = await hybridSearch.search(body.query, env, topK, body.rerank !== false);
 				return new Response(
 					JSON.stringify({
-						error: "Invalid JSON in request body",
+						query: body.query,
+						topK,
+						resultsCount: results.length,
+						results: results.map(r => ({ id: r.id, score: r.rrfScore, content: r.content, category: r.category, scores: { vector: r.vectorScore, keyword: r.keywordScore, reranker: r.rerankerScore } })),
+						performance,
 					}),
-					{
-						status: 400,
-						headers: { 
-							"Content-Type": "application/json",
-							...corsHeaders(),
-						},
-					}
+					{ headers: { "Content-Type": "application/json", ...corsHeaders() } }
 				);
+			} catch {
+				return new Response(JSON.stringify({ error: "Invalid JSON in request body" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
 			}
 		}
 
-		// Route: Insert single document
-		if (url.pathname === "/insert" && request.method === "POST") {
-			return await insertDocument(request, env);
+		// Ingest Document
+		if (url.pathname === "/ingest" && request.method === "POST") {
+			try {
+				const body = await request.json<Document>();
+				if (!body.id || typeof body.id !== 'string') {
+					return new Response(JSON.stringify({ error: "Missing or invalid id" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+				}
+				if (!body.content || typeof body.content !== 'string') {
+					return new Response(JSON.stringify({ error: "Missing or invalid content" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+				}
+				const result = await ingestion.ingest(body, env);
+				return new Response(JSON.stringify({ success: true, documentId: body.id, chunksCreated: result.chunks, performance: result.performance }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			} catch (error) {
+				return new Response(JSON.stringify({ error: "Ingest failed", message: error instanceof Error ? error.message : "Unknown error" }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			}
+		}
+
+		// Delete Document
+		if (url.pathname.startsWith("/documents/") && request.method === "DELETE") {
+			const docId = url.pathname.replace("/documents/", "");
+			if (!docId) {
+				return new Response(JSON.stringify({ error: "Document ID required" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			}
+			await ingestion.delete(docId, env);
+			return new Response(JSON.stringify({ success: true, deleted: docId }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
 		}
 
 		// 404 for unknown routes
@@ -271,245 +464,3 @@ export default {
 		);
 	},
 };
-
-async function insertDocument(request: Request, env: Env): Promise<Response> {
-	const startTime = Date.now();
-
-	try {
-		const body = await request.json<{ id: string; content: string; metadata?: Record<string, any> }>();
-		const { id, content, metadata = {} } = body;
-
-		// Validation
-		if (!id || typeof id !== 'string') {
-			return new Response(
-				JSON.stringify({
-					error: 'Missing or invalid id',
-					hint: 'Provide a unique string identifier'
-				}),
-				{
-					status: 400,
-					headers: { 
-						"Content-Type": "application/json",
-						...corsHeaders(),
-					},
-				}
-			);
-		}
-
-		if (!content || typeof content !== 'string') {
-			return new Response(
-				JSON.stringify({
-					error: 'Missing or invalid content',
-					hint: 'Provide text content to embed'
-				}),
-				{
-					status: 400,
-					headers: { 
-						"Content-Type": "application/json",
-						...corsHeaders(),
-					},
-				}
-			);
-		}
-
-		// Generate embedding
-		const embeddingStart = Date.now();
-		const response = await env.AI.run("@cf/baai/bge-small-en-v1.5", {
-			text: content,
-		});
-		const embeddingTime = Date.now() - embeddingStart;
-
-		// Handle the response type properly
-		const embedding = Array.isArray(response) ? response : (response as any).data[0];
-
-		// Insert into Vectorize
-		const insertStart = Date.now();
-		await env.VECTORIZE.upsert([
-			{
-				id: id,
-				values: embedding,
-				metadata: {
-					content,
-					...metadata,
-					insertedAt: new Date().toISOString()
-				},
-			},
-		]);
-		const insertTime = Date.now() - insertStart;
-
-		return new Response(
-			JSON.stringify({
-				success: true,
-				id,
-				performance: {
-					embeddingTime: `${embeddingTime}ms`,
-					insertTime: `${insertTime}ms`,
-					totalTime: `${Date.now() - startTime}ms`
-				}
-			}),
-			{
-				headers: { 
-					"Content-Type": "application/json",
-					...corsHeaders(),
-				},
-			}
-		);
-	} catch (error) {
-		return new Response(
-			JSON.stringify({
-				error: 'Insert failed',
-				message: error instanceof Error ? error.message : 'Unknown error',
-				hint: 'Check your request format and try again'
-			}),
-			{
-				status: 500,
-				headers: { 
-					"Content-Type": "application/json",
-					...corsHeaders(),
-				},
-			}
-		);
-	}
-}
-
-async function populateIndex(env: Env): Promise<Response> {
-	const startTime = Date.now();
-	try {
-		const vectors = [];
-
-		// Generate embeddings for each entry
-		for (const entry of knowledgeBase) {
-			const response = await env.AI.run("@cf/baai/bge-small-en-v1.5", {
-				text: entry.content,
-			});
-
-			// Handle the response type properly
-			const embedding = Array.isArray(response) ? response : (response as any).data[0];
-
-			vectors.push({
-				id: entry.id,
-				values: embedding,
-				metadata: {
-					content: entry.content,
-					category: entry.category,
-				},
-			});
-		}
-
-		// Insert into Vectorize
-		await env.VECTORIZE.insert(vectors);
-
-		const duration = Date.now() - startTime;
-
-		return new Response(
-			JSON.stringify({
-				success: true,
-				message: `Inserted ${vectors.length} vectors into the index`,
-				duration: `${duration}ms`,
-				model: "@cf/baai/bge-small-en-v1.5",
-			}),
-			{
-				headers: { 
-					"Content-Type": "application/json",
-					...corsHeaders(),
-				},
-			}
-		);
-	} catch (error) {
-		return new Response(
-			JSON.stringify({
-				error: error instanceof Error ? error.message : "Unknown error",
-				hint: "Make sure Vectorize index is created and bound correctly",
-			}),
-			{
-				status: 500,
-				headers: { 
-					"Content-Type": "application/json",
-					...corsHeaders(),
-				},
-			}
-		);
-	}
-}
-
-async function searchIndex(query: string, topK: number, env: Env, filter?: Record<string, any>): Promise<Response> {
-	const startTime = Date.now();
-	
-	try {
-		// Validate topK
-		if (topK < 1 || topK > 20) {
-			return new Response(
-				JSON.stringify({
-					error: "topK must be between 1 and 20",
-				}),
-				{
-					status: 400,
-					headers: { 
-						"Content-Type": "application/json",
-						...corsHeaders(),
-					},
-				}
-			);
-		}
-
-		// Generate embedding for the query (start timing here for accuracy)
-		const embeddingStart = Date.now();
-		const response = await env.AI.run("@cf/baai/bge-small-en-v1.5", {
-			text: query,
-		});
-		const embeddingTime = Date.now() - embeddingStart;
-
-		// Handle the response type properly
-		const queryEmbedding = Array.isArray(response) ? response : (response as any).data[0];
-
-		// Search Vectorize
-		const searchStart = Date.now();
-		const results = await env.VECTORIZE.query(queryEmbedding, {
-			topK,
-			returnMetadata: true,
-			filter: filter || undefined,
-		});
-		const searchTime = Date.now() - searchStart;
-
-		const totalTime = Date.now() - startTime;
-
-		return new Response(
-			JSON.stringify({
-				query,
-				topK,
-				resultsCount: results.matches.length,
-				results: results.matches.map((match) => ({
-					id: match.id,
-					score: match.score,
-					content: match.metadata?.content,
-					category: match.metadata?.category,
-				})),
-				performance: {
-					embeddingTime: `${embeddingTime}ms`,
-					searchTime: `${searchTime}ms`,
-					totalTime: `${totalTime}ms`,
-				},
-			}),
-			{
-				headers: { 
-					"Content-Type": "application/json",
-					...corsHeaders(),
-				},
-			}
-		);
-	} catch (error) {
-		return new Response(
-			JSON.stringify({
-				error: error instanceof Error ? error.message : "Unknown error",
-				hint: "Make sure the index is populated with /populate first",
-			}),
-			{
-				status: 500,
-				headers: { 
-					"Content-Type": "application/json",
-					...corsHeaders(),
-				},
-			}
-		);
-	}
-}
