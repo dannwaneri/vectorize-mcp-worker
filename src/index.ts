@@ -48,8 +48,6 @@ const knowledgeBase = [
 	},
 ];
 
-
-
 // Authentication middleware
 function authenticate(request: Request, env: Env): Response | null {
 	const url = new URL(request.url);
@@ -98,7 +96,6 @@ function authenticate(request: Request, env: Env): Response | null {
 	return null; // Authentication successful
 }
 
-
 // CORS headers helper
 function corsHeaders() {
 	return {
@@ -107,7 +104,6 @@ function corsHeaders() {
 		"Access-Control-Allow-Headers": "Content-Type, Authorization",
 	};
 }
-
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
@@ -136,6 +132,7 @@ export default {
 					endpoints: {
 						"POST /populate": "Populate the vector index with knowledge base",
 						"POST /search": "Search the index (requires 'query' and optional 'topK' in body)",
+						"POST /insert": "Insert a single document into the index",
 						"GET /test": "Check service health and bindings",
 						"GET /stats": "Get index statistics",
 					},
@@ -218,7 +215,7 @@ export default {
 		// Route: Search the index
 		if (url.pathname === "/search" && request.method === "POST") {
 			try {
-				const body = await request.json<{ query: string; topK?: number }>();
+				const body = await request.json<{ query: string; topK?: number; filter?: Record<string, any> }>();
 				
 				if (!body.query) {
 					return new Response(
@@ -235,8 +232,8 @@ export default {
 					);
 				}
 
-				const { query, topK = 5 } = body;
-				return await searchIndex(query, topK, env);
+				const { query, topK = 5, filter } = body;
+				return await searchIndex(query, topK, env, filter);
 			} catch (error) {
 				return new Response(
 					JSON.stringify({
@@ -251,6 +248,11 @@ export default {
 					}
 				);
 			}
+		}
+
+		// Route: Insert single document
+		if (url.pathname === "/insert" && request.method === "POST") {
+			return await insertDocument(request, env);
 		}
 
 		// 404 for unknown routes
@@ -269,6 +271,106 @@ export default {
 		);
 	},
 };
+
+async function insertDocument(request: Request, env: Env): Promise<Response> {
+	const startTime = Date.now();
+
+	try {
+		const body = await request.json<{ id: string; content: string; metadata?: Record<string, any> }>();
+		const { id, content, metadata = {} } = body;
+
+		// Validation
+		if (!id || typeof id !== 'string') {
+			return new Response(
+				JSON.stringify({
+					error: 'Missing or invalid id',
+					hint: 'Provide a unique string identifier'
+				}),
+				{
+					status: 400,
+					headers: { 
+						"Content-Type": "application/json",
+						...corsHeaders(),
+					},
+				}
+			);
+		}
+
+		if (!content || typeof content !== 'string') {
+			return new Response(
+				JSON.stringify({
+					error: 'Missing or invalid content',
+					hint: 'Provide text content to embed'
+				}),
+				{
+					status: 400,
+					headers: { 
+						"Content-Type": "application/json",
+						...corsHeaders(),
+					},
+				}
+			);
+		}
+
+		// Generate embedding
+		const embeddingStart = Date.now();
+		const response = await env.AI.run("@cf/baai/bge-small-en-v1.5", {
+			text: content,
+		});
+		const embeddingTime = Date.now() - embeddingStart;
+
+		// Handle the response type properly
+		const embedding = Array.isArray(response) ? response : (response as any).data[0];
+
+		// Insert into Vectorize
+		const insertStart = Date.now();
+		await env.VECTORIZE.upsert([
+			{
+				id: id,
+				values: embedding,
+				metadata: {
+					content,
+					...metadata,
+					insertedAt: new Date().toISOString()
+				},
+			},
+		]);
+		const insertTime = Date.now() - insertStart;
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				id,
+				performance: {
+					embeddingTime: `${embeddingTime}ms`,
+					insertTime: `${insertTime}ms`,
+					totalTime: `${Date.now() - startTime}ms`
+				}
+			}),
+			{
+				headers: { 
+					"Content-Type": "application/json",
+					...corsHeaders(),
+				},
+			}
+		);
+	} catch (error) {
+		return new Response(
+			JSON.stringify({
+				error: 'Insert failed',
+				message: error instanceof Error ? error.message : 'Unknown error',
+				hint: 'Check your request format and try again'
+			}),
+			{
+				status: 500,
+				headers: { 
+					"Content-Type": "application/json",
+					...corsHeaders(),
+				},
+			}
+		);
+	}
+}
 
 async function populateIndex(env: Env): Promise<Response> {
 	const startTime = Date.now();
@@ -330,7 +432,7 @@ async function populateIndex(env: Env): Promise<Response> {
 	}
 }
 
-async function searchIndex(query: string, topK: number, env: Env): Promise<Response> {
+async function searchIndex(query: string, topK: number, env: Env, filter?: Record<string, any>): Promise<Response> {
 	const startTime = Date.now();
 	
 	try {
@@ -365,6 +467,7 @@ async function searchIndex(query: string, topK: number, env: Env): Promise<Respo
 		const results = await env.VECTORIZE.query(queryEmbedding, {
 			topK,
 			returnMetadata: true,
+			filter: filter || undefined,
 		});
 		const searchTime = Date.now() - searchStart;
 

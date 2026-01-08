@@ -9,6 +9,9 @@ binding = "AI"
 binding = "VECTORIZE"
 index_name = "mcp-knowledge-base"
 
+[observability]
+enabled = true
+
 # To set API key for production:
 # wrangler secret put API_KEY
 # Then enter your key when prompted
