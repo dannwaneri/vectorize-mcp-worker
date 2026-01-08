@@ -661,7 +661,7 @@ function getDashboardHTML(): string {
   },
   "author": {
     "@type": "Person",
-    "name": "Daniel Nwaneri",
+    "name": "Danny Waneri",
     "url": "https://github.com/dannwaneri"
   },
   "softwareVersion": "2.0.0",
@@ -716,14 +716,16 @@ button:disabled{background:#404040;cursor:not-allowed}
 .search-row input{flex:1;min-width:150px;margin-bottom:0}
 .search-row select{width:70px;margin-bottom:0;flex-shrink:0}
 .search-row button{width:auto;padding:10px 20px;flex-shrink:0}
-@media(max-width:768px){
-.grid{grid-template-columns:1fr}
-.grid .card:last-child{grid-column:1}
+@media screen and (max-width:900px){
+.grid{grid-template-columns:1fr!important}
+.grid .card{grid-column:1!important}
 .stats-grid{grid-template-columns:repeat(3,1fr)}
 .perf-grid{grid-template-columns:1fr}
 .search-row{flex-direction:column}
 .search-row input,.search-row select,.search-row button{width:100%}
-body{padding:10px}
+body{padding:8px}
+h1{font-size:1.2rem}
+.subtitle{font-size:0.8rem}
 }
 </style>
 </head>
@@ -921,7 +923,7 @@ curl -X POST /search -H "Content-Type: application/json" -d '{"query": "your que
 \`\`\`
 
 ## Author
-Daniel Nwaneri - https://github.com/dannwaneri
+Danny Waneri - https://github.com/dannwaneri
 
 ## Links
 - GitHub: https://github.com/dannwaneri/vectorize-mcp-worker
