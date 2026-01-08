@@ -661,7 +661,7 @@ function getDashboardHTML(): string {
   },
   "author": {
     "@type": "Person",
-    "name": "Danny Waneri",
+    "name": "Daniel Nwaneri",
     "url": "https://github.com/dannwaneri"
   },
   "softwareVersion": "2.0.0",
@@ -921,7 +921,7 @@ curl -X POST /search -H "Content-Type: application/json" -d '{"query": "your que
 \`\`\`
 
 ## Author
-Danny Waneri - https://github.com/dannwaneri
+Daniel Nwaneri - https://github.com/dannwaneri
 
 ## Links
 - GitHub: https://github.com/dannwaneri/vectorize-mcp-worker
