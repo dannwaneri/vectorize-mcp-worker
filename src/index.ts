@@ -223,8 +223,8 @@ const ingestion = new IngestionEngine();
 function authenticate(request: Request, env: Env): Response | null {
 	const url = new URL(request.url);
 	
-	// Skip auth for test endpoint and root
-	if (url.pathname === "/" || url.pathname === "/test") {
+	// Skip auth for test endpoint, root, and dashboard
+	if (url.pathname === "/" || url.pathname === "/test" || url.pathname === "/dashboard") {
 		return null;
 	}
 
@@ -308,6 +308,7 @@ export default {
 					],
 					endpoints: {
 						"GET /": "API documentation",
+						"GET /dashboard": "Interactive playground UI",
 						"GET /test": "Health check",
 						"GET /stats": "Index statistics",
 						"POST /search": "Hybrid search (query, topK, rerank)",
@@ -328,6 +329,13 @@ export default {
 					},
 				}
 			);
+		}
+
+		// Dashboard - Interactive Playground
+		if (url.pathname === "/dashboard" && request.method === "GET") {
+			return new Response(getDashboardHTML(), {
+				headers: { "Content-Type": "text/html" },
+			});
 		}
 
 		// Test endpoint to check bindings
@@ -464,3 +472,211 @@ export default {
 		);
 	},
 };
+
+// Dashboard HTML
+function getDashboardHTML(): string {
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vectorize MCP Worker - Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a0a;color:#e5e5e5;min-height:100vh;padding:20px}
+.container{max-width:1200px;margin:0 auto}
+h1{font-size:1.5rem;margin-bottom:8px;color:#fff}
+.subtitle{color:#888;margin-bottom:24px;font-size:0.9rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:768px){.grid{grid-template-columns:1fr}}
+.card{background:#171717;border:1px solid #262626;border-radius:12px;padding:20px}
+.card h2{font-size:1rem;margin-bottom:16px;color:#fff;display:flex;align-items:center;gap:8px}
+.card h2 span{font-size:1.2rem}
+label{display:block;font-size:0.8rem;color:#888;margin-bottom:6px}
+input,textarea,select{width:100%;padding:10px 12px;background:#262626;border:1px solid #404040;border-radius:8px;color:#fff;font-size:0.9rem;margin-bottom:12px}
+input:focus,textarea:focus{outline:none;border-color:#3b82f6}
+textarea{resize:vertical;min-height:120px;font-family:inherit}
+button{background:#3b82f6;color:#fff;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:0.9rem;font-weight:500;width:100%;transition:background 0.2s}
+button:hover{background:#2563eb}
+button:disabled{background:#404040;cursor:not-allowed}
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.stat{background:#262626;padding:12px;border-radius:8px;text-align:center}
+.stat-value{font-size:1.25rem;font-weight:600;color:#3b82f6}
+.stat-label{font-size:0.7rem;color:#888;margin-top:4px}
+.results{margin-top:16px;max-height:400px;overflow-y:auto}
+.result{background:#262626;padding:12px;border-radius:8px;margin-bottom:8px;border-left:3px solid #3b82f6}
+.result-header{display:flex;justify-content:space-between;margin-bottom:8px}
+.result-id{font-size:0.75rem;color:#888}
+.result-score{font-size:0.75rem;color:#22c55e;font-weight:600}
+.result-content{font-size:0.85rem;color:#d4d4d4;line-height:1.5}
+.result-category{display:inline-block;font-size:0.7rem;background:#3b82f6;color:#fff;padding:2px 8px;border-radius:4px;margin-top:8px}
+.perf{margin-top:16px;padding:12px;background:#262626;border-radius:8px}
+.perf-title{font-size:0.75rem;color:#888;margin-bottom:8px}
+.perf-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.perf-item{font-size:0.8rem}
+.perf-item span{color:#22c55e}
+.log{font-size:0.8rem;color:#888;margin-top:8px;padding:8px;background:#1a1a1a;border-radius:4px;max-height:100px;overflow-y:auto}
+.success{color:#22c55e}
+.error{color:#ef4444}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:0.7rem;margin-left:8px}
+.badge-green{background:#166534;color:#86efac}
+.badge-yellow{background:#854d0e;color:#fef08a}
+.auth-section{margin-bottom:20px;padding:16px;background:#1c1917;border:1px solid #44403c;border-radius:8px}
+.auth-section label{color:#fbbf24}
+.flex{display:flex;gap:8px}
+.flex input{margin-bottom:0}
+.flex button{width:auto;padding:10px 16px}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🔍 Vectorize MCP Worker</h1>
+<p class="subtitle">Production-Grade Hybrid RAG on Cloudflare Edge</p>
+
+<div class="auth-section">
+<label>🔑 API Key (required for protected endpoints)</label>
+<div class="flex">
+<input type="password" id="apiKey" placeholder="Enter your API key">
+<button onclick="testAuth()">Test</button>
+</div>
+<div id="authStatus" class="log" style="display:none"></div>
+</div>
+
+<div class="grid">
+<div class="card">
+<h2><span>📊</span> Stats</h2>
+<div class="stats-grid">
+<div class="stat"><div class="stat-value" id="vectorCount">-</div><div class="stat-label">Vectors</div></div>
+<div class="stat"><div class="stat-value" id="docCount">-</div><div class="stat-label">Documents</div></div>
+<div class="stat"><div class="stat-value" id="dimensions">-</div><div class="stat-label">Dimensions</div></div>
+</div>
+<button onclick="loadStats()">Refresh Stats</button>
+</div>
+
+<div class="card">
+<h2><span>📥</span> Ingest Document</h2>
+<label>Document ID</label>
+<input type="text" id="docId" placeholder="unique-doc-id">
+<label>Category (optional)</label>
+<input type="text" id="docCategory" placeholder="e.g., technical, product">
+<label>Content</label>
+<textarea id="docContent" placeholder="Paste your document content here..."></textarea>
+<button onclick="ingestDoc()">Ingest Document</button>
+<div id="ingestLog" class="log" style="display:none"></div>
+</div>
+
+<div class="card" style="grid-column:span 2">
+<h2><span>🔎</span> Search</h2>
+<div class="flex" style="margin-bottom:12px">
+<input type="text" id="searchQuery" placeholder="Enter your search query..." style="margin-bottom:0">
+<select id="topK" style="width:80px;margin-bottom:0">
+<option value="3">Top 3</option>
+<option value="5" selected>Top 5</option>
+<option value="10">Top 10</option>
+</select>
+<button onclick="search()" style="width:auto;padding:10px 24px">Search</button>
+</div>
+<label><input type="checkbox" id="useRerank" checked> Use Reranker</label>
+<div id="searchResults" class="results"></div>
+<div id="searchPerf" class="perf" style="display:none">
+<div class="perf-title">⚡ Performance</div>
+<div class="perf-grid" id="perfGrid"></div>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+const API_BASE = '';
+const getHeaders = () => {
+const h = {'Content-Type':'application/json'};
+const key = document.getElementById('apiKey').value;
+if(key) h['Authorization'] = 'Bearer ' + key;
+return h;
+};
+
+async function testAuth(){
+const el = document.getElementById('authStatus');
+el.style.display = 'block';
+el.innerHTML = 'Testing...';
+try {
+const r = await fetch(API_BASE + '/test');
+const d = await r.json();
+el.innerHTML = '<span class="success">✓ Connected</span> | Mode: ' + d.mode + ' | D1: ' + (d.bindings.hasD1?'✓':'✗');
+} catch(e) { el.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; }
+}
+
+async function loadStats(){
+try {
+const r = await fetch(API_BASE + '/stats', {headers: getHeaders()});
+const d = await r.json();
+document.getElementById('vectorCount').textContent = d.index?.vectorCount || 0;
+document.getElementById('docCount').textContent = d.documents?.total_documents || 0;
+document.getElementById('dimensions').textContent = d.dimensions || 384;
+} catch(e) { console.error(e); }
+}
+
+async function ingestDoc(){
+const log = document.getElementById('ingestLog');
+log.style.display = 'block';
+log.innerHTML = 'Ingesting...';
+const id = document.getElementById('docId').value;
+const content = document.getElementById('docContent').value;
+const category = document.getElementById('docCategory').value;
+if(!id || !content) { log.innerHTML = '<span class="error">ID and content required</span>'; return; }
+try {
+const r = await fetch(API_BASE + '/ingest', {
+method: 'POST', headers: getHeaders(),
+body: JSON.stringify({id, content, category: category || undefined})
+});
+const d = await r.json();
+if(d.success) {
+log.innerHTML = '<span class="success">✓ Ingested!</span> Chunks: ' + d.chunksCreated + ' | Time: ' + d.performance.totalTime;
+document.getElementById('docId').value = '';
+document.getElementById('docContent').value = '';
+loadStats();
+} else { log.innerHTML = '<span class="error">✗ ' + d.error + '</span>'; }
+} catch(e) { log.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; }
+}
+
+async function search(){
+const res = document.getElementById('searchResults');
+const perf = document.getElementById('searchPerf');
+res.innerHTML = 'Searching...';
+const query = document.getElementById('searchQuery').value;
+if(!query) { res.innerHTML = '<span class="error">Enter a query</span>'; return; }
+try {
+const r = await fetch(API_BASE + '/search', {
+method: 'POST', headers: getHeaders(),
+body: JSON.stringify({
+query,
+topK: parseInt(document.getElementById('topK').value),
+rerank: document.getElementById('useRerank').checked
+})
+});
+const d = await r.json();
+if(d.error) { res.innerHTML = '<span class="error">' + d.error + '</span>'; return; }
+res.innerHTML = d.results.map(r => \`
+<div class="result">
+<div class="result-header">
+<span class="result-id">\${r.id}</span>
+<span class="result-score">Score: \${r.score.toFixed(4)}</span>
+</div>
+<div class="result-content">\${r.content.substring(0,300)}\${r.content.length>300?'...':''}</div>
+\${r.category ? '<span class="result-category">' + r.category + '</span>' : ''}
+</div>
+\`).join('') || '<span class="error">No results</span>';
+perf.style.display = 'block';
+document.getElementById('perfGrid').innerHTML = Object.entries(d.performance).map(([k,v]) => 
+'<div class="perf-item">' + k + ': <span>' + v + '</span></div>'
+).join('');
+} catch(e) { res.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; }
+}
+
+document.getElementById('searchQuery').addEventListener('keypress', e => { if(e.key === 'Enter') search(); });
+loadStats();
+testAuth();
+</script>
+</body>
+</html>`;
+}
