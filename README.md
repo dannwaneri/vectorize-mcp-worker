@@ -401,3 +401,9 @@ MIT License - see [LICENSE](LICENSE) file.
 **⭐ Star the repo if this saved you money!**
 
 **💬 Questions? [Open an issue](https://github.com/dannwaneri/vectorize-mcp-worker/issues)**
+
+## Contributors
+
+Thanks to these people for improving the project:
+
+- [@luojiyin1987](https://github.com/luojiyin1987) - Bug reports and testing
