@@ -5,6 +5,7 @@ compatibility_date = "2025-12-02"
 [ai]
 binding = "AI"
 
+# RAG Index (384 dimensions - BGE text embeddings)
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "mcp-knowledge-base"
@@ -13,6 +14,11 @@ index_name = "mcp-knowledge-base"
 binding = "DB"
 database_name = "mcp-knowledge-db"
 database_id = "acba4671-52e3-458e-8115-d000f31c32b1"
+
+# Service binding to the multimodal worker (internal-only)
+[[services]]
+binding = "MULTIMODAL"
+service = "multimodal-pro-worker"
 
 [observability]
 enabled = true

@@ -44,6 +44,14 @@ This worker changes the game:
 - ✅ **Cross-Encoder Reranking** - Precision scoring with `bge-reranker-base`
 - ✅ **Recursive Chunking** - Semantic boundary-aware with 15% overlap
 
+### Multimodal Search (NEW in V3!)
+- ✅ **Image Ingestion** - Upload screenshots, diagrams, photos
+- ✅ **Llama 4 Scout Vision** - AI-powered image understanding
+- ✅ **OCR Extraction** - Automatic text extraction from images (700+ chars)
+- ✅ **Reverse Image Search** - Find similar images by uploading a query image
+- ✅ **Unified Index** - Text and images searchable together (384 dims)
+- ✅ **60s Cache** - 0ms response time for repeated queries
+
 ### Platform
 - ✅ **Interactive Dashboard** - Visual playground at `/dashboard`
 - ✅ **MCP Integration** - Works with Claude Desktop and AI agents
@@ -57,27 +65,38 @@ This worker changes the game:
 - ✅ **Edge Deployment** - Runs globally on Cloudflare's network
 
 ## Architecture
-
 ```
 User Query
     │
     ├──► Vector Search (Vectorize) ──┐
-    │    └─ BGE embeddings           │
+    │    └─ BGE embeddings (384d)    │
     │                                ├──► RRF Fusion ──► Reranker ──► Results
     └──► Keyword Search (D1 BM25) ───┘
          └─ Term frequency/IDF
 
-Performance: ~1s total (embedding + vector + keyword + rerank)
+Images
+    │
+    ├──► Llama 4 Scout ──► Description (semantic)
+    │                  └─► OCR Text (keywords)
+    │
+    └──► BGE Embeddings ──► Same 384d index
+
+Performance: 
+- Text search: ~900ms (first), 0ms (cached)
+- Image ingest: ~7.7s (vision + OCR + embedding)
+- Reverse search: ~8s (vision + search)
 ```
 
 **Tech Stack:**
 - **Runtime**: Cloudflare Workers
-- **Vector DB**: Cloudflare Vectorize
+- **Vector DB**: Cloudflare Vectorize (384 dims, single unified index)
 - **SQL DB**: Cloudflare D1 (BM25 keywords)
-- **Embedding**: `@cf/baai/bge-small-en-v1.5` (384 dimensions)
+- **Embedding**: `@cf/baai/bge-small-en-v1.5`
 - **Reranker**: `@cf/baai/bge-reranker-base`
+- **Vision**: `@cf/meta/llama-4-scout-17b-16e-instruct` 
 
 ## Quick Start (10 Minutes)
+
 
 ### Prerequisites
 - [Cloudflare account](https://dash.cloudflare.com/sign-up) (free tier works)
@@ -150,7 +169,107 @@ curl -X POST https://your-worker.workers.dev/search \
   -d '{"query": "your search query", "topK": 5}'
 ```
 
+
+## Quick Demo
+
+### Upload an Image
+```bash
+curl -X POST https://your-worker.workers.dev/ingest-image \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "id=dashboard-001" \
+  -F "image=@dashboard.png" \
+  -F "imageType=screenshot"
+```
+
+### Search by Description
+```bash
+curl -X POST https://your-worker.workers.dev/search \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "dashboard with navigation", "topK": 5}'
+```
+
+**Result:** Your image appears in search results! 🎉
+
+### Find Similar Images
+```bash
+curl -X POST https://your-worker.workers.dev/find-similar-images \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "image=@similar-dashboard.png" \
+  -F "topK=5"
+```
+
+**Result:** System finds visually similar dashboards you've indexed.
+
+
 ## API Endpoints
+
+
+### Image Endpoints (NEW!)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ingest-image` | POST | Upload and index images with AI description + OCR |
+| `/find-similar-images` | POST | Reverse image search - find visually similar images |
+
+#### Image Ingestion Example
+```bash
+curl -X POST https://your-worker.workers.dev/ingest-image \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "id=screenshot-001" \
+  -F "image=@dashboard.png" \
+  -F "category=ui-screenshots" \
+  -F "imageType=screenshot"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "documentId": "screenshot-001",
+  "description": "Dashboard interface with metrics cards showing...",
+  "extractedText": "API Key\nEnter your API key\nTest\nServer Online...",
+  "performance": {
+    "multimodalProcessing": "4852ms",
+    "totalTime": "7737ms"
+  }
+}
+```
+
+#### Reverse Image Search Example
+```bash
+curl -X POST https://your-worker.workers.dev/find-similar-images \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "image=@query.png" \
+  -F "topK=5"
+```
+
+**Response:**
+```json
+{
+  "query": "Dashboard interface with metrics cards...",
+  "results": [
+    {
+      "id": "screenshot-001",
+      "score": 0.0156,
+      "content": "Dashboard interface...",
+      "category": "ui-screenshots",
+      "isImage": true
+    }
+  ],
+  "performance": {
+    "totalTime": "1135ms"
+  }
+}
+```
+
+**Image Types:**
+- `screenshot` - UI screenshots (extracts button labels, form fields)
+- `diagram` - Flowcharts, architecture diagrams
+- `document` - Scanned documents, forms
+- `chart` - Data visualizations
+- `photo` - General photographs
+- `auto` - Let AI determine (default)
 
 ### Public Endpoints (No Auth)
 
@@ -305,9 +424,11 @@ curl -X POST https://your-worker.workers.dev/mcp/call \
 
 ### Available Tools
 - `search` - Search the knowledge base (hybrid vector + BM25)
-- `ingest` - Add documents with auto-chunking
+- `ingest` - Add text documents with auto-chunking
+- `ingest_image` - Add images with AI description + OCR (NEW!)
 - `stats` - Get index statistics
 - `delete` - Remove documents
+```
 
 ## License System
 
@@ -337,13 +458,18 @@ curl -X POST https://your-worker.workers.dev/license/validate \
 
 Real-world benchmarks from production:
 
-| Operation | Time |
-|-----------|------|
-| Embedding Generation | ~90ms |
-| Vector Search | ~650ms |
-| Keyword Search (BM25) | ~50ms |
-| Reranking | ~120ms |
-| **Total Hybrid Search** | **~900ms** |
+| Operation | Time | Notes |
+|-----------|------|-------|
+| Text Embedding | ~90ms | BGE-small-en |
+| Vector Search | ~650ms | Vectorize query |
+| Keyword Search (BM25) | ~50ms | D1 database |
+| Reranking | ~120ms | Cross-encoder |
+| **Hybrid Text Search** | **~900ms** | Full pipeline |
+| **Cached Search** | **0ms** | 60s TTL cache |
+| Image Vision + OCR | ~5s | Llama 4 Scout (2 calls) |
+| Image Embedding | ~2s | BGE-small-en |
+| **Image Ingestion** | **~7.7s** | Vision + OCR + embedding |
+| **Reverse Image Search** | **~8s** | Vision + hybrid search |
 
 ## Cost Comparison
 

@@ -3,6 +3,7 @@ export interface Env {
 	VECTORIZE: VectorizeIndex;
 	DB: D1Database;
 	API_KEY?: string;
+	MULTIMODAL: Fetcher;
 }
 
 // Types
@@ -12,6 +13,12 @@ interface Document {
 	title?: string;
 	source?: string;
 	category?: string;
+}
+
+interface ImageDocument extends Document {
+	imageBuffer: ArrayBuffer;
+	imageDescription?: string;
+	imageType?: 'screenshot' | 'diagram' | 'photo' | 'document' | 'chart' | 'auto'; // ADD THIS LINE
 }
 
 interface Chunk {
@@ -27,6 +34,7 @@ interface SearchResult {
 	score: number;
 	category?: string;
 	source: 'vector' | 'keyword' | 'hybrid';
+	isImage?: boolean;
 }
 
 interface HybridSearchResult extends SearchResult {
@@ -90,30 +98,39 @@ class KeywordSearchEngine {
 	async search(db: D1Database, query: string, topK: number): Promise<SearchResult[]> {
 		const tokens = this.tokenize(query);
 		if (!tokens.length) return [];
-
+	
+		// LIMIT tokens to avoid "too many SQL variables" error
+		// SQLite has a limit of ~999 variables, so we'll use max 100 tokens for safety
+		const limitedTokens = tokens.slice(0, 100);
+		
+		if (!limitedTokens.length) return [];
+	
 		const stats = await db.prepare('SELECT total_documents, avg_doc_length FROM doc_stats WHERE id = 1').first<{ total_documents: number; avg_doc_length: number }>();
 		if (!stats?.total_documents) return [];
-
-		const placeholders = tokens.map(() => '?').join(',');
-		const results = await db.prepare(`SELECT d.id, d.content, d.category, k.term, k.term_frequency, LENGTH(d.content) as doc_length, ts.document_frequency FROM documents d JOIN keywords k ON d.id = k.document_id JOIN term_stats ts ON k.term = ts.term WHERE k.term IN (${placeholders})`).bind(...tokens).all<{ id: string; content: string; category: string; term_frequency: number; doc_length: number; document_frequency: number }>();
-
-		const scores = new Map<string, { score: number; content: string; category: string }>();
+	
+		const placeholders = limitedTokens.map(() => '?').join(',');
+		const results = await db.prepare(`SELECT d.id, d.content, d.category, d.is_image, k.term, k.term_frequency, LENGTH(d.content) as doc_length, ts.document_frequency FROM documents d JOIN keywords k ON d.id = k.document_id JOIN term_stats ts ON k.term = ts.term WHERE k.term IN (${placeholders})`).bind(...limitedTokens).all<{ id: string; content: string; category: string; is_image: number; term_frequency: number; doc_length: number; document_frequency: number }>();
+	
+		const scores = new Map<string, { score: number; content: string; category: string; isImage: boolean }>();
 		for (const r of results.results) {
 			const idf = Math.log((stats.total_documents - r.document_frequency + 0.5) / (r.document_frequency + 0.5) + 1);
 			const tf = (r.term_frequency * (this.k1 + 1)) / (r.term_frequency + this.k1 * (1 - this.b + this.b * (r.doc_length / stats.avg_doc_length)));
 			const existing = scores.get(r.id);
 			if (existing) existing.score += idf * tf;
-			else scores.set(r.id, { score: idf * tf, content: r.content, category: r.category });
+			else scores.set(r.id, { score: idf * tf, content: r.content, category: r.category, isImage: r.is_image === 1 });
 		}
-
-		return Array.from(scores.entries()).sort((a, b) => b[1].score - a[1].score).slice(0, topK).map(([id, d]) => ({ id, content: d.content, score: d.score, category: d.category, source: 'keyword' as const }));
+	
+		return Array.from(scores.entries()).sort((a, b) => b[1].score - a[1].score).slice(0, topK).map(([id, d]) => ({ id, content: d.content, score: d.score, category: d.category, source: 'keyword' as const, isImage: d.isImage }));
 	}
 }
+
 
 // Hybrid Search with RRF
 class HybridSearchEngine {
 	private rrfK = 60;
 	private keywordEngine = new KeywordSearchEngine();
+	private cache = new Map<string, { results: HybridSearchResult[]; timestamp: number }>(); // ADD THIS
+    private CACHE_TTL = 60000; // 1 minute cache // ADD THIS
 
 	reciprocalRankFusion(vectorResults: SearchResult[], keywordResults: SearchResult[]): HybridSearchResult[] {
 		const scores = new Map<string, HybridSearchResult>();
@@ -127,6 +144,16 @@ class HybridSearchEngine {
 	}
 
 	async search(query: string, env: Env, topK: number, useReranker: boolean): Promise<{ results: HybridSearchResult[]; performance: Record<string, string> }> {
+		const cacheKey = `${query}-${topK}-${useReranker}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+        console.log('Cache hit!');
+        return { 
+            results: cached.results, 
+            performance: { totalTime: '0ms (cached)' } 
+        };
+    }
+    
 		const start = Date.now();
 		const perf: Record<string, string> = {};
 
@@ -140,7 +167,7 @@ class HybridSearchEngine {
 		const vecResults = await env.VECTORIZE.query(embedding, { topK: topK * 2, returnMetadata: true });
 		perf.vectorSearchTime = `${Date.now() - vecStart}ms`;
 
-		const vectorSearchResults: SearchResult[] = vecResults.matches.map(m => ({ id: m.id, content: (m.metadata?.content as string) || '', score: m.score, category: m.metadata?.category as string, source: 'vector' as const }));
+		const vectorSearchResults: SearchResult[] = vecResults.matches.map(m => ({ id: m.id, content: (m.metadata?.content as string) || '', score: m.score, category: m.metadata?.category as string, source: 'vector' as const,isImage: m.metadata?.isImage as boolean || false }));
 
 		// Keyword search (if D1 available)
 		let keywordResults: SearchResult[] = [];
@@ -164,6 +191,7 @@ class HybridSearchEngine {
 		}
 
 		perf.totalTime = `${Date.now() - start}ms`;
+		this.cache.set(cacheKey, { results, timestamp: Date.now() });
 		return { results: results.slice(0, topK), performance: perf };
 	}
 }
@@ -187,15 +215,39 @@ class IngestionEngine {
 		const vectors: VectorizeVector[] = [];
 
 		const embStart = Date.now();
-		for (const chunk of chunks) {
-			if (env.DB) {
-				await env.DB.prepare('INSERT INTO documents (id, content, title, source, category, chunk_index, parent_id, word_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(chunk.id, chunk.content, doc.title || null, doc.source || null, doc.category || null, chunk.chunkIndex, chunk.parentId, chunk.content.split(/\s+/).length).run();
-				await this.kwEngine.indexDocument(env.DB, chunk.id, chunk.content);
-			}
-			const embResp = await env.AI.run('@cf/baai/bge-small-en-v1.5', { text: chunk.content });
-			const emb = Array.isArray(embResp) ? embResp : (embResp as any).data[0];
-			vectors.push({ id: chunk.id, values: emb, metadata: { content: chunk.content, category: doc.category || '', parentId: chunk.parentId, chunkIndex: chunk.chunkIndex } });
-		}
+		// Batch: Generate all embeddings in parallel
+const embeddingPromises = chunks.map(chunk => 
+    env.AI.run('@cf/baai/bge-small-en-v1.5', { text: chunk.content })
+        .then(embResp => ({
+            chunk,
+            embedding: Array.isArray(embResp) ? embResp : (embResp as any).data[0]
+        }))
+);
+
+const embeddingResults = await Promise.all(embeddingPromises);
+
+// Store in DB and build vectors
+for (const { chunk, embedding } of embeddingResults) {
+    if (env.DB) {
+        await env.DB.prepare('INSERT INTO documents (id, content, title, source, category, chunk_index, parent_id, word_count, is_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(
+            chunk.id, chunk.content, doc.title || null, doc.source || null, 
+            doc.category || null, chunk.chunkIndex, chunk.parentId, 
+            chunk.content.split(/\s+/).length, 0
+        ).run();
+        await this.kwEngine.indexDocument(env.DB, chunk.id, chunk.content);
+    }
+    vectors.push({ 
+        id: chunk.id, 
+        values: embedding, 
+        metadata: { 
+            content: chunk.content, 
+            category: doc.category || '', 
+            parentId: chunk.parentId, 
+            chunkIndex: chunk.chunkIndex, 
+            isImage: false 
+        } 
+    });
+}
 		perf.embeddingTime = `${Date.now() - embStart}ms`;
 
 		if (vectors.length) await env.VECTORIZE.upsert(vectors);
@@ -204,6 +256,92 @@ class IngestionEngine {
 		return { success: true, chunks: chunks.length, performance: perf };
 	}
 
+	async ingestImage(doc: ImageDocument, env: Env): Promise<{ 
+		success: boolean; 
+		description: string; 
+		extractedText?: string; // ADD THIS LINE
+		performance: Record<string, string> 
+	}> {
+		const start = Date.now();
+		const perf: Record<string, string> = {};
+	
+		// Call multimodal worker via service binding
+		const multimodalStart = Date.now();
+		const response = await env.MULTIMODAL.fetch('http://internal/describe-image', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				imageBuffer: Array.from(new Uint8Array(doc.imageBuffer)),
+				prompt: doc.content || undefined,
+				imageType: doc.imageType || 'auto', // ADD THIS LINE
+			}),
+		});
+	
+		const result = await response.json<{
+			success: boolean;
+			description: string;
+			extractedText?: string; // ADD THIS LINE
+			vector: number[];
+			metadata: { 
+				processingTime: string;
+				hasExtractedText: boolean; // ADD THIS LINE
+			};
+			error?: string;
+		}>();
+	
+		if (!result.success) {
+			throw new Error(result.error || 'Multimodal processing failed');
+		}
+	
+		perf.multimodalProcessing = result.metadata.processingTime;
+	
+		// REPLACE: const fullContent = result.description
+		// WITH: Combine description with extracted text
+		const fullContent = result.extractedText 
+			? `${result.description}\n\nExtracted Text: ${result.extractedText}`
+			: result.description;
+	
+		// Store in D1 and Vectorize
+		if (env.DB) {
+			await env.DB.prepare('INSERT INTO documents (id, content, title, source, category, chunk_index, parent_id, word_count, is_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(
+				doc.id,
+				fullContent, // CHANGE: was result.description
+				doc.title || 'Image Document',
+				doc.source || 'image',
+				doc.category || 'images',
+				0,
+				doc.id,
+				fullContent.split(/\s+/).length, // CHANGE: was result.description.split
+				1
+			).run();
+			await this.kwEngine.indexDocument(env.DB, doc.id, fullContent); // CHANGE: was result.description
+		}
+	
+		// Store vector
+		await env.VECTORIZE.upsert([{
+			id: doc.id,
+			values: result.vector,
+			metadata: {
+				content: fullContent, // CHANGE: was result.description
+				category: doc.category || 'images',
+				parentId: doc.id,
+				chunkIndex: 0,
+				isImage: true,
+				hasExtractedText: result.metadata.hasExtractedText, // ADD THIS LINE
+			},
+		}]);
+	
+		perf.totalTime = `${Date.now() - start}ms`;
+	
+		return { 
+			success: true, 
+			description: result.description,
+			extractedText: result.extractedText, // ADD THIS LINE
+			performance: perf 
+		};
+	}
+	
+	
 	async delete(docId: string, env: Env): Promise<void> {
 		if (env.DB) {
 			const chunks = await env.DB.prepare('SELECT id FROM documents WHERE id = ? OR parent_id = ?').bind(docId, docId).all<{ id: string }>();
@@ -215,6 +353,7 @@ class IngestionEngine {
 		}
 	}
 }
+
 
 const hybridSearch = new HybridSearchEngine();
 const ingestion = new IngestionEngine();
@@ -294,50 +433,55 @@ export default {
 		}
 
 		// Root endpoint - API documentation
-		if (url.pathname === "/" && request.method === "GET") {
-			return new Response(
-				JSON.stringify({
-					name: "Vectorize MCP Worker",
-					version: "2.0.0",
-					description: "Production-Grade Hybrid RAG on Cloudflare Edge",
-					features: [
-						"Hybrid Search (Vector + BM25)",
-						"Reciprocal Rank Fusion (RRF)",
-						"Cross-Encoder Reranking",
-						"Recursive Chunking with 15% overlap",
-						"One-time License System",
-					],
-					endpoints: {
-						"GET /": "API documentation",
-						"GET /dashboard": "Interactive playground UI",
-						"GET /llms.txt": "AI search engine info",
-						"GET /test": "Health check",
-						"GET /stats": "Index statistics",
-						"POST /search": "Hybrid search (query, topK, rerank)",
-						"POST /ingest": "Ingest document with auto-chunking",
-						"DELETE /documents/:id": "Delete document",
-						"POST /license/validate": "Validate a license key",
-						"POST /license/create": "Create license (admin)",
-						"GET /license/list": "List all licenses (admin)",
-						"POST /license/revoke": "Revoke a license (admin)",
-						"GET /mcp/tools": "List MCP tools",
-						"POST /mcp/call": "Execute MCP tool",
-					},
-					models: {
-						embedding: "@cf/baai/bge-small-en-v1.5",
-						reranker: "@cf/baai/bge-reranker-base",
-					},
-					authentication: env.API_KEY ? "required" : "disabled (dev mode)",
-					docs: "https://github.com/dannwaneri/vectorize-mcp-worker",
-				}),
-				{
-					headers: { 
-						"Content-Type": "application/json",
-						...corsHeaders(),
-					},
-				}
-			);
+if (url.pathname === "/" && request.method === "GET") {
+	return new Response(
+		JSON.stringify({
+			name: "Vectorize MCP Worker",
+			version: "2.1.0", // Update version
+			description: "Production-Grade Hybrid RAG with Multimodal Support", // Update description
+			features: [
+				"Hybrid Search (Vector + BM25)",
+				"Multimodal Image Processing (Llama 4 Scout)", // Add this
+				"Visual Search", // Add this
+				"Reciprocal Rank Fusion (RRF)",
+				"Cross-Encoder Reranking",
+				"Recursive Chunking with 15% overlap",
+				"One-time License System",
+			],
+			endpoints: {
+				"GET /": "API documentation",
+				"GET /dashboard": "Interactive playground UI",
+				"GET /llms.txt": "AI search engine info",
+				"GET /test": "Health check",
+				"GET /stats": "Index statistics",
+				"POST /search": "Hybrid search (query, topK, rerank)",
+				"POST /ingest": "Ingest document with auto-chunking",
+				"POST /ingest-image": "Ingest image with AI-generated description", // Add this
+				"POST /find-similar-images": "Find visually similar images by uploading a query image",
+				"DELETE /documents/:id": "Delete document",
+				"POST /license/validate": "Validate a license key",
+				"POST /license/create": "Create license (admin)",
+				"GET /license/list": "List all licenses (admin)",
+				"POST /license/revoke": "Revoke a license (admin)",
+				"GET /mcp/tools": "List MCP tools",
+				"POST /mcp/call": "Execute MCP tool",
+			},
+			models: {
+				embedding: "@cf/baai/bge-small-en-v1.5",
+				reranker: "@cf/baai/bge-reranker-base",
+				vision: "@cf/meta/llama-4-scout-17b-16e-instruct", // Add this
+			},
+			authentication: env.API_KEY ? "required" : "disabled (dev mode)",
+			docs: "https://github.com/dannwaneri/vectorize-mcp-worker",
+		}),
+		{
+			headers: { 
+				"Content-Type": "application/json",
+				...corsHeaders(),
+			},
 		}
+	);
+}
 
 		// Dashboard - Interactive Playground
 		if (url.pathname === "/dashboard" && request.method === "GET") {
@@ -420,7 +564,13 @@ export default {
 		// Hybrid Search
 		if (url.pathname === "/search" && request.method === "POST") {
 			try {
-				const body = await request.json<{ query: string; topK?: number; rerank?: boolean }>();
+				const body = await request.json<{ 
+					query: string; 
+					topK?: number; 
+					rerank?: boolean;
+					offset?: number; // ADD THIS
+				}>();
+				const offset = body.offset || 0; // ADD THIS
 				if (!body.query) {
 					return new Response(JSON.stringify({ error: "Missing 'query' field in request body" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
 				}
@@ -428,13 +578,22 @@ export default {
 				if (topK < 1 || topK > 20) {
 					return new Response(JSON.stringify({ error: "topK must be between 1 and 20" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
 				}
-				const { results, performance } = await hybridSearch.search(body.query, env, topK, body.rerank !== false);
-				return new Response(
-					JSON.stringify({
-						query: body.query,
-						topK,
-						resultsCount: results.length,
-						results: results.map(r => ({ id: r.id, score: r.rrfScore, content: r.content, category: r.category, scores: { vector: r.vectorScore, keyword: r.keywordScore, reranker: r.rerankerScore } })),
+				// Get more results than needed for pagination
+const totalToFetch = offset + topK;
+const { results, performance } = await hybridSearch.search(body.query, env, totalToFetch, body.rerank !== false);
+return new Response(
+    JSON.stringify({
+        query: body.query,
+        topK,
+        offset,
+        resultsCount: results.length,
+        results: results.slice(offset, offset + topK).map(r => ({ // ← Now correct
+							id: r.id, 
+							score: r.rrfScore, 
+							content: r.content, 
+							category: r.category, 
+							scores: { vector: r.vectorScore, keyword: r.keywordScore, reranker: r.rerankerScore } 
+						})),
 						performance,
 					}),
 					{ headers: { "Content-Type": "application/json", ...corsHeaders() } }
@@ -561,6 +720,7 @@ export default {
 							required: ["id", "content"]
 						}
 					},
+					
 					{
 						name: "stats",
 						description: "Get knowledge base statistics",
@@ -581,7 +741,96 @@ export default {
 			}), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
 		}
 
-		// MCP: Call Tool (JSON-RPC style)
+		// Ingest Image endpoint
+		if (url.pathname === "/ingest-image" && request.method === "POST") {
+			try {
+				const formData = await request.formData();
+				const id = formData.get('id') as string;
+				const imageFile = formData.get('image') as File;
+				const category = formData.get('category') as string || 'images';
+				const title = formData.get('title') as string || undefined;
+				const imageType = formData.get('imageType') as string || 'auto'; // ADD THIS LINE
+		
+				if (!id || !imageFile) {
+					return new Response(JSON.stringify({ error: "Missing id or image" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+				}
+		
+				const imageBuffer = await imageFile.arrayBuffer();
+				const result = await ingestion.ingestImage({ 
+					id, 
+					content: '', 
+					imageBuffer, 
+					category, 
+					title,
+					imageType: imageType as any // ADD THIS LINE
+				}, env);
+				
+				return new Response(JSON.stringify({ 
+					success: true, 
+					documentId: id, 
+					description: result.description,
+					extractedText: result.extractedText, // ADD THIS LINE
+					performance: result.performance 
+				}), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			} catch (error) {
+				return new Response(JSON.stringify({ error: "Image ingest failed", message: error instanceof Error ? error.message : "Unknown" }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			}
+		}
+		
+
+// Find similar images by uploading an image
+if (url.pathname === "/find-similar-images" && request.method === "POST") {
+    try {
+        const formData = await request.formData();
+        const imageFile = formData.get('image') as File;
+        const topK = parseInt(formData.get('topK') as string || '5');
+        
+        if (!imageFile) {
+            return new Response(JSON.stringify({ error: "Missing image" }), 
+                { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+        }
+        
+        const imageBuffer = await imageFile.arrayBuffer();
+        
+        // Get description from multimodal worker
+        const response = await env.MULTIMODAL.fetch('http://internal/describe-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                imageBuffer: Array.from(new Uint8Array(imageBuffer)),
+                imageType: 'auto'
+            }),
+        });
+        
+        const result = await response.json<{ success: boolean; description: string; error?: string }>();
+        
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to process image');
+        }
+        
+        // Search using the description
+        const { results, performance } = await hybridSearch.search(result.description, env, topK, true);
+        
+        // Filter to only images
+        const imageResults = results.filter(r => r.isImage);
+        
+        return new Response(JSON.stringify({
+            query: result.description,
+            results: imageResults,
+            performance
+        }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
+    } catch (error) {
+        return new Response(JSON.stringify({ 
+            error: error instanceof Error ? error.message : "Unknown error" 
+        }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+    }
+}
+
+
+
+
+
+// MCP: Call Tool (JSON-RPC style)
 		if (url.pathname === "/mcp/call" && request.method === "POST") {
 			try {
 				const body = await request.json<{ tool: string; arguments: Record<string, any> }>();
@@ -612,6 +861,7 @@ export default {
 						await ingestion.delete(args.id, env);
 						return new Response(JSON.stringify({ result: { success: true, deleted: args.id } }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
 					}
+					
 					default:
 						return new Response(JSON.stringify({ error: `Unknown tool: ${body.tool}` }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
 				}
@@ -645,13 +895,13 @@ function getDashboardHTML(): string {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vectorize MCP Worker - Dashboard</title>
-<meta name="description" content="Production-Grade Hybrid RAG on Cloudflare Edge with Vector + BM25 search, RRF, and reranking">
+<meta name="description" content="Production-Grade Hybrid RAG with Multimodal Support on Cloudflare Edge">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Vectorize MCP Worker",
-  "description": "Production-Grade Hybrid RAG on Cloudflare Edge combining vector similarity with BM25 keyword matching",
+  "description": "Production-Grade Hybrid RAG with Multimodal Image Processing",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Cloudflare Workers",
   "offers": {
@@ -664,27 +914,28 @@ function getDashboardHTML(): string {
     "name": "Daniel Nwaneri",
     "url": "https://github.com/dannwaneri"
   },
-  "softwareVersion": "2.0.0",
+  "softwareVersion": "2.1.0",
   "url": "https://github.com/dannwaneri/vectorize-mcp-worker"
 }
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,-apple-system,sans-serif;background:#f5f5f5;color:#1a1a1a;min-height:100vh;padding:12px}
-.container{max-width:900px;margin:0 auto}
+.container{max-width:1200px;margin:0 auto}
 .gh-banner{background:#4f46e5;color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;font-size:0.85rem}
 .gh-banner a{color:#fff;text-decoration:none;font-weight:500}
 .gh-banner button{background:none;border:none;color:#fff;cursor:pointer;font-size:1.1rem}
 h1{font-size:1.8rem;margin-bottom:8px;color:#1a1a1a;font-weight:700;text-align:center}
 .subtitle{color:#666;margin-bottom:8px;font-size:1rem;text-align:center}
 .tagline{color:#888;margin-bottom:24px;font-size:0.8rem;text-align:center}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
 .card{background:#fff;border:1px solid #e5e5e5;border-radius:12px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
 .card h2{font-size:1rem;margin-bottom:14px;color:#1a1a1a;display:flex;align-items:center;gap:8px;font-weight:600}
 .card h2 span{font-size:1.1rem}
 label{display:block;font-size:0.8rem;color:#555;margin-bottom:6px;font-weight:500}
 input,textarea,select{width:100%;padding:12px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;color:#1a1a1a;font-size:16px;margin-bottom:12px}
-input:focus,textarea:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,0.1)}
+input[type="file"]{padding:8px;cursor:pointer}
+input:focus,textarea:focus,select:focus{outline:none;border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,0.1)}
 input::placeholder,textarea::placeholder{color:#999}
 textarea{resize:vertical;min-height:120px;font-family:inherit}
 button{background:#4f46e5;color:#fff;border:none;padding:12px 20px;border-radius:8px;cursor:pointer;font-size:0.95rem;font-weight:600;width:100%;transition:background 0.2s}
@@ -696,17 +947,18 @@ button:disabled{background:#ccc;cursor:not-allowed}
 .stat-label{font-size:0.7rem;color:#888;margin-top:4px}
 .results{margin-top:14px;max-height:350px;overflow-y:auto}
 .result{background:#f9fafb;border:1px solid #e5e5e5;padding:12px;border-radius:8px;margin-bottom:8px;border-left:3px solid #4f46e5}
-.result-header{display:flex;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:4px}
+.result-header{display:flex;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:4px;align-items:center}
 .result-id{font-size:0.7rem;color:#888;word-break:break-all}
 .result-score{font-size:0.7rem;color:#059669;font-weight:600}
 .result-content{font-size:0.85rem;color:#444;line-height:1.5;word-break:break-word}
 .result-category{display:inline-block;font-size:0.65rem;background:#4f46e5;color:#fff;padding:2px 8px;border-radius:4px;margin-top:6px}
+.image-badge{background:#f97316;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:600;display:inline-block}
 .perf{margin-top:14px;padding:12px;background:#f9fafb;border:1px solid #e5e5e5;border-radius:8px}
 .perf-title{font-size:0.75rem;color:#888;margin-bottom:8px}
 .perf-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
 .perf-item{font-size:0.8rem;color:#555}
 .perf-item span{color:#059669;font-weight:600}
-.log{font-size:0.8rem;color:#666;margin-top:8px;padding:10px;background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;max-height:80px;overflow-y:auto;word-break:break-word}
+.log{font-size:0.8rem;color:#666;margin-top:8px;padding:10px;background:#f9fafb;border:1px solid #e5e5e5;border-radius:6px;max-height:120px;overflow-y:auto;word-break:break-word}
 .success{color:#059669}
 .error{color:#dc2626}
 .auth-section{margin-bottom:16px;padding:16px;background:#fff;border:1px solid #e5e5e5;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
@@ -718,11 +970,22 @@ button:disabled{background:#ccc;cursor:not-allowed}
 .search-row input{flex:1;min-width:150px;margin-bottom:0}
 .search-row select{width:80px;margin-bottom:0;flex-shrink:0}
 .search-row button{width:auto;padding:12px 24px;flex-shrink:0}
+.demo-card{background:#f0f9ff;border:1px solid #0ea5e9;border-left:3px solid #0ea5e9}
+.demo-card button{margin-top:8px}
+.demo-card button:first-of-type{margin-top:0;background:#0ea5e9}
+.demo-card button:first-of-type:hover{background:#0284c7}
+.demo-card button:last-of-type{background:#059669}
+.demo-card button:last-of-type:hover{background:#047857}
+.demo-card p{font-size:0.85rem;color:#555;margin-bottom:12px;line-height:1.4}
 .footer{text-align:center;margin-top:24px;padding:16px;color:#888;font-size:0.8rem}
 .footer a{color:#4f46e5;text-decoration:none}
-@media screen and (max-width:900px){
+@media screen and (max-width:1024px){
+.grid{grid-template-columns:repeat(2,1fr)!important}
+.card.search-card{grid-column:span 2!important}
+}
+@media screen and (max-width:768px){
 .grid{grid-template-columns:1fr!important}
-.grid .card{grid-column:1!important}
+.card{grid-column:1!important}
 .stats-grid{grid-template-columns:repeat(3,1fr)}
 .perf-grid{grid-template-columns:1fr}
 .search-row{flex-direction:column}
@@ -739,9 +1002,9 @@ h1{font-size:1.5rem}
 <a href="https://github.com/dannwaneri/vectorize-mcp-worker" target="_blank">⭐ Star on GitHub - Help spread the word!</a>
 <button onclick="document.getElementById('ghBanner').style.display='none'">✕</button>
 </div>
-<h1>Vectorize MCP Worker</h1>
-<p class="subtitle">Get instant semantic search with AI-powered hybrid ranking.</p>
-<p class="tagline">~900ms search • Vector + BM25 • Reranked results • $5/month</p>
+<h1>Vectorize MCP Worker V3</h1>
+<p class="subtitle">Hybrid RAG with Vision: Search text and images with AI-powered understanding.</p>
+<p class="tagline">~900ms search • Vector + BM25 • Multimodal • OCR • Reranked results • $5/month</p>
 
 <div class="auth-section">
 <label>🔑 API Key (required for protected endpoints)</label>
@@ -775,10 +1038,38 @@ h1{font-size:1.5rem}
 <div id="ingestLog" class="log" style="display:none"></div>
 </div>
 
-<div class="card" style="grid-column:span 2">
+<div class="card">
+<h2><span>📸</span> Ingest Image <span style="font-size:0.7rem;background:#f97316;color:#fff;padding:2px 6px;border-radius:4px;font-weight:600">NEW</span></h2>
+<label>Image ID</label>
+<input type="text" id="imageId" placeholder="receipt-001">
+<label>Category (optional)</label>
+<input type="text" id="imageCategory" placeholder="e.g., receipts, screenshots, diagrams">
+<label>Image Type (optional)</label>
+<select id="imageType">
+<option value="auto">Auto-detect</option>
+<option value="screenshot">Screenshot</option>
+<option value="document">Scanned Document/OCR</option>
+<option value="diagram">Diagram/Chart</option>
+<option value="photo">Photo</option>
+</select>
+<label>Upload Image</label>
+<input type="file" id="imageFile" accept="image/*">
+<button onclick="ingestImage()">Ingest Image</button>
+<div id="imageLog" class="log" style="display:none"></div>
+</div>
+
+<div class="card demo-card">
+<h2><span>🎯</span> Try V3 Features</h2>
+<p>Test multimodal search with pre-loaded sample images</p>
+<button onclick="searchImages()">🖼️ Search: "dashboard navigation"</button>
+<button onclick="searchFinancial()">💳 Search: "Access Bank transaction"</button>
+<div id="demoLog" class="log" style="display:none"></div>
+</div>
+
+<div class="card search-card" style="grid-column:span 3">
 <h2><span>🔎</span> Search</h2>
 <div class="search-row">
-<input type="text" id="searchQuery" placeholder="Ask anything about your documents...">
+<input type="text" id="searchQuery" placeholder="Ask anything about your documents or images...">
 <select id="topK">
 <option value="3">Top 3</option>
 <option value="5" selected>Top 5</option>
@@ -796,7 +1087,7 @@ h1{font-size:1.5rem}
 </div>
 
 <div class="footer">
-⚡ Powered by <a href="https://developers.cloudflare.com/workers/" target="_blank">Cloudflare Workers</a> + <a href="https://developers.cloudflare.com/vectorize/" target="_blank">Vectorize</a> + <a href="https://developers.cloudflare.com/d1/" target="_blank">D1</a>
+⚡ Powered by <a href="https://developers.cloudflare.com/workers/" target="_blank">Cloudflare Workers</a> + <a href="https://developers.cloudflare.com/vectorize/" target="_blank">Vectorize</a> + <a href="https://developers.cloudflare.com/d1/" target="_blank">D1</a> + <a href="https://developers.cloudflare.com/workers-ai/" target="_blank">Llama 4 Scout Vision</a>
 </div>
 </div>
 
@@ -809,6 +1100,38 @@ if(key) h['Authorization'] = 'Bearer ' + key;
 return h;
 };
 
+async function compressImage(file, maxWidth = 1920, maxHeight = 1080, quality = 0.85) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > maxWidth || height > maxHeight) {
+                    if (width > height) {
+                        height = (height / width) * maxWidth;
+                        width = maxWidth;
+                    } else {
+                        width = (width / height) * maxHeight;
+                        height = maxHeight;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
 async function testAuth(){
 const el = document.getElementById('authStatus');
 el.style.display = 'block';
@@ -851,9 +1174,55 @@ log.innerHTML = '<span class="success">✓ Ingested!</span> Chunks: ' + d.chunks
 document.getElementById('docId').value = '';
 document.getElementById('docContent').value = '';
 loadStats();
-} else { log.innerHTML = '<span class="error">✗ ' + d.error + '</span>'; }
+} else { log.innerHTML = '<span class="error">✗ ' + (d.error || 'Unknown error') + '</span>'; }
 } catch(e) { log.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; }
 }
+
+async function ingestImage(){
+	const log = document.getElementById('imageLog');
+	log.style.display = 'block';
+	log.innerHTML = 'Processing image...';
+	const id = document.getElementById('imageId').value;
+	const originalFile = document.getElementById('imageFile').files[0];
+	const category = document.getElementById('imageCategory').value;
+	const imageType = document.getElementById('imageType').value;
+	if(!id || !originalFile) { log.innerHTML = '<span class="error">ID and image file required</span>'; return; }
+	try {
+	const originalSizeMB = (originalFile.size / (1024 * 1024)).toFixed(2);
+	log.innerHTML = 'Compressing image (' + originalSizeMB + 'MB)...';
+	
+	const compressedBlob = await compressImage(originalFile);
+	const compressedSizeMB = (compressedBlob.size / (1024 * 1024)).toFixed(2);
+	log.innerHTML = 'Uploading (' + originalSizeMB + 'MB → ' + compressedSizeMB + 'MB)...';
+	
+	const formData = new FormData();
+	formData.append('id', id);
+	formData.append('image', compressedBlob, 'image.jpg');
+	if(category) formData.append('category', category);
+	if(imageType !== 'auto') formData.append('imageType', imageType);
+	
+	const headers = {};
+	const apiKey = document.getElementById('apiKey').value;
+	if(apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
+	
+	const r = await fetch(API_BASE + '/ingest-image', {
+	method: 'POST',
+	headers: headers,
+	body: formData
+	});
+	const d = await r.json();
+	if(d.success) {
+	log.innerHTML = '<span class="success">✓ Image Ingested!</span><br>' +
+	'Compressed: ' + originalSizeMB + 'MB → ' + compressedSizeMB + 'MB<br>' +
+	'Description: ' + (d.description || '').substring(0, 150) + '...<br>' +
+	(d.extractedText ? 'OCR Text: ' + d.extractedText.substring(0, 100) + '...<br>' : '') +
+	'Time: ' + d.performance.totalTime;
+	document.getElementById('imageId').value = '';
+	document.getElementById('imageFile').value = '';
+	loadStats();
+	} else { log.innerHTML = '<span class="error">✗ ' + (d.error || 'Unknown error') + '</span>'; }
+	} catch(e) { log.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; }
+	}
 
 async function search(){
 const res = document.getElementById('searchResults');
@@ -875,6 +1244,7 @@ if(d.error) { res.innerHTML = '<span class="error">' + d.error + '</span>'; retu
 res.innerHTML = d.results.map(r => \`
 <div class="result">
 <div class="result-header">
+\${r.isImage ? '<span class="image-badge">📸 IMAGE</span>' : ''}
 <span class="result-id">\${r.id}</span>
 <span class="result-score">Score: \${r.score.toFixed(4)}</span>
 </div>
@@ -887,6 +1257,22 @@ document.getElementById('perfGrid').innerHTML = Object.entries(d.performance).ma
 '<div class="perf-item">' + k + ': <span>' + v + '</span></div>'
 ).join('');
 } catch(e) { res.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; }
+}
+
+async function searchImages(){
+document.getElementById('searchQuery').value = 'dashboard navigation';
+await search();
+const demoLog = document.getElementById('demoLog');
+demoLog.style.display = 'block';
+demoLog.innerHTML = '<span class="success">✓ Search complete!</span> Notice the 📸 IMAGE badges on results showing screenshots.';
+}
+
+async function searchFinancial(){
+document.getElementById('searchQuery').value = 'Access Bank N30000';
+await search();
+const demoLog = document.getElementById('demoLog');
+demoLog.style.display = 'block';
+demoLog.innerHTML = '<span class="success">✓ Search complete!</span> OCR extracted transaction details from receipt images.';
 }
 
 document.getElementById('searchQuery').addEventListener('keypress', e => { if(e.key === 'Enter') search(); });

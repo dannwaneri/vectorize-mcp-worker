@@ -1,4 +1,5 @@
--- schema.sql - Run: wrangler d1 execute mcp-knowledge-db --remote --file=./schema.sql
+-- schema.sql - Optimized for RAG-only multimodal support
+-- Run: wrangler d1 execute mcp-knowledge-db --remote --file=./schema.sql
 
 CREATE TABLE IF NOT EXISTS documents (
     id TEXT PRIMARY KEY,
@@ -9,6 +10,7 @@ CREATE TABLE IF NOT EXISTS documents (
     chunk_index INTEGER DEFAULT 0,
     parent_id TEXT,
     word_count INTEGER,
+    is_image INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -34,12 +36,11 @@ CREATE TABLE IF NOT EXISTS term_stats (
 CREATE INDEX IF NOT EXISTS idx_keywords_term ON keywords(term);
 CREATE INDEX IF NOT EXISTS idx_keywords_doc ON keywords(document_id);
 CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_id);
+CREATE INDEX IF NOT EXISTS idx_documents_image ON documents(is_image);
 
 INSERT OR IGNORE INTO doc_stats (id, total_documents, avg_doc_length) VALUES (1, 0, 0);
 
-
-
--- Licenses table for one-time payment model
+-- Licenses table
 CREATE TABLE IF NOT EXISTS licenses (
     license_key TEXT PRIMARY KEY,
     email TEXT,
