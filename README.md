@@ -117,20 +117,25 @@ npm install
 wrangler vectorize create mcp-knowledge-base --dimensions=384 --metric=cosine
 ```
 
-### 3. Create D1 Database
-
+### 3. Setup Configuration
 ```bash
+# Copy the example configuration file
+cp wrangler.toml.example wrangler.toml
+# Windows PowerShell: copy wrangler.toml.example wrangler.toml
+
+# Create your D1 database
 wrangler d1 create mcp-knowledge-db
 ```
 
-Copy the `database_id` and update `wrangler.toml`:
-
+Copy the `database_id` from the output and update `wrangler.toml` (line 15):
 ```toml
 [[d1_databases]]
 binding = "DB"
 database_name = "mcp-knowledge-db"
-database_id = "YOUR_DATABASE_ID"
+database_id = "YOUR_DATABASE_ID"  # ← Replace with your actual database_id
 ```
+
+**⚠️ Security:** `wrangler.toml` contains sensitive configuration and is in `.gitignore`. Never commit it to git.
 
 ### 4. Run Migrations
 
@@ -200,6 +205,37 @@ curl -X POST https://your-worker.workers.dev/find-similar-images \
 ```
 
 **Result:** System finds visually similar dashboards you've indexed.
+
+
+## 🔒 Security Best Practices
+
+### Configuration Files
+- ✅ **DO** commit: `wrangler.toml.example`, `.gitignore`
+- ❌ **DON'T** commit: `wrangler.toml`, `.dev.vars`, `.env` files
+
+### API Keys
+- Store API keys using Wrangler secrets (never in code):
+```bash
+  wrangler secret put API_KEY
+```
+- API key is required for all endpoints except:
+  - `GET /` (API docs)
+  - `GET /dashboard` (UI playground)
+  - `GET /test` (health check)
+  - `GET /llms.txt` (search engine info)
+
+### Database Security
+- Each developer should create their own D1 database
+- Never share database IDs publicly
+- Use `wrangler.toml.example` as a template
+
+### Setting Up for Development
+1. Copy `wrangler.toml.example` → `wrangler.toml`
+2. Create your own D1 database
+3. Update `wrangler.toml` with YOUR database ID
+4. Set API key: `wrangler secret put API_KEY`
+5. Never commit `wrangler.toml`
+
 
 
 ## API Endpoints
@@ -541,6 +577,26 @@ curl -X POST https://your-worker.workers.dev/ingest \
   -H "Content-Type: application/json" \
   -d '{"id": "test", "content": "Your content here"}'
 ```
+
+
+
+## ✅ Deployment Checklist
+
+Before deploying:
+- [ ] `wrangler.toml` exists locally (copied from example)
+- [ ] `wrangler.toml` has YOUR database ID (not placeholder)
+- [ ] `wrangler.toml` is NOT tracked by git
+- [ ] Vectorize index created: `mcp-knowledge-base`
+- [ ] D1 database created and migrated
+- [ ] API_KEY secret set (if using authentication)
+- [ ] Test deployment: `wrangler deploy`
+- [ ] Visit dashboard: `https://your-worker.workers.dev/dashboard`
+
+Check if `wrangler.toml` is properly ignored:
+```bash
+git check-ignore wrangler.toml  # Should output: wrangler.toml
+```
+
 
 ## Contributors
 
