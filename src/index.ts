@@ -5,11 +5,13 @@ import { IngestionEngine } from './engines/ingestion';
 import { authenticate } from './middleware/auth';
 import { corsHeaders, handleCorsPrelight } from './middleware/cors';
 
+import { handleSearch } from './handlers/search';
+import { handleIngest } from './handlers/ingest';
+import { handleStats } from './handlers/stats';
 
 
-
-const hybridSearch = new HybridSearchEngine();
 const ingestion = new IngestionEngine();
+const hybridSearch = new HybridSearchEngine();
 
 
 export default {
@@ -118,102 +120,18 @@ if (url.pathname === "/" && request.method === "GET") {
 		}
 
 		// Stats endpoint
-		if (url.pathname === "/stats" && request.method === "GET") {
-			try {
-				const stats = await env.VECTORIZE.describe();
-				let docStats = null;
-				if (env.DB) {
-					docStats = await env.DB.prepare('SELECT total_documents, avg_doc_length FROM doc_stats WHERE id = 1').first();
-				}
-				return new Response(
-					JSON.stringify({
-						index: stats,
-						documents: docStats,
-						model: "@cf/baai/bge-small-en-v1.5",
-						dimensions: 384,
-					}),
-					{
-						headers: { 
-							"Content-Type": "application/json",
-							...corsHeaders(),
-						},
-					}
-				);
-			} catch (error) {
-				return new Response(
-					JSON.stringify({
-						error: "Failed to get stats",
-						message: error instanceof Error ? error.message : "Unknown error",
-					}),
-					{
-						status: 500,
-						headers: { 
-							"Content-Type": "application/json",
-							...corsHeaders(),
-						},
-					}
-				);
-			}
-		}
-
+if (url.pathname === "/stats" && request.method === "GET") {
+    return handleStats(request, env);
+}
 		// Hybrid Search
-		if (url.pathname === "/search" && request.method === "POST") {
-			try {
-				const body = await request.json<{ 
-					query: string; 
-					topK?: number; 
-					rerank?: boolean;
-					offset?: number; // ADD THIS
-				}>();
-				const offset = body.offset || 0; // ADD THIS
-				if (!body.query) {
-					return new Response(JSON.stringify({ error: "Missing 'query' field in request body" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
-				}
-				const topK = body.topK || 5;
-				if (topK < 1 || topK > 20) {
-					return new Response(JSON.stringify({ error: "topK must be between 1 and 20" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
-				}
-				// Get more results than needed for pagination
-const totalToFetch = offset + topK;
-const { results, performance } = await hybridSearch.search(body.query, env, totalToFetch, body.rerank !== false);
-return new Response(
-    JSON.stringify({
-        query: body.query,
-        topK,
-        offset,
-        resultsCount: results.length,
-        results: results.slice(offset, offset + topK).map(r => ({ // ← Now correct
-							id: r.id, 
-							score: r.rrfScore, 
-							content: r.content, 
-							category: r.category, 
-							scores: { vector: r.vectorScore, keyword: r.keywordScore, reranker: r.rerankerScore } 
-						})),
-						performance,
-					}),
-					{ headers: { "Content-Type": "application/json", ...corsHeaders() } }
-				);
-			} catch {
-				return new Response(JSON.stringify({ error: "Invalid JSON in request body" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
-			}
-		}
+if (url.pathname === "/search" && request.method === "POST") {
+    return handleSearch(request, env);
+}
 
 		// Ingest Document
-		if (url.pathname === "/ingest" && request.method === "POST") {
-			try {
-				const body = await request.json<Document>();
-				if (!body.id || typeof body.id !== 'string') {
-					return new Response(JSON.stringify({ error: "Missing or invalid id" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
-				}
-				if (!body.content || typeof body.content !== 'string') {
-					return new Response(JSON.stringify({ error: "Missing or invalid content" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
-				}
-				const result = await ingestion.ingest(body, env);
-				return new Response(JSON.stringify({ success: true, documentId: body.id, chunksCreated: result.chunks, performance: result.performance }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
-			} catch (error) {
-				return new Response(JSON.stringify({ error: "Ingest failed", message: error instanceof Error ? error.message : "Unknown error" }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } });
-			}
-		}
+if (url.pathname === "/ingest" && request.method === "POST") {
+    return handleIngest(request, env);
+}
 
 		// Delete Document
 		if (url.pathname.startsWith("/documents/") && request.method === "DELETE") {
