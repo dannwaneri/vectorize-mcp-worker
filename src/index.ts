@@ -2,6 +2,8 @@ import { Env } from './types/env';
 import { Document} from './types/document';
 import { HybridSearchEngine } from './engines/hybrid';
 import { IngestionEngine } from './engines/ingestion';
+import { authenticate } from './middleware/auth';
+import { corsHeaders, handleCorsPrelight } from './middleware/cors';
 
 
 
@@ -9,73 +11,15 @@ import { IngestionEngine } from './engines/ingestion';
 const hybridSearch = new HybridSearchEngine();
 const ingestion = new IngestionEngine();
 
-// Authentication middleware
-function authenticate(request: Request, env: Env): Response | null {
-	const url = new URL(request.url);
-	
-	// Skip auth for public endpoints
-	if (url.pathname === "/" || url.pathname === "/test" || url.pathname === "/dashboard" || url.pathname === "/llms.txt" || url.pathname === "/mcp/tools") {
-		return null;
-	}
-
-	// If API_KEY is not set, allow all requests (development mode)
-	if (!env.API_KEY) {
-		return null;
-	}
-
-	// Check for Authorization header
-	const authHeader = request.headers.get("Authorization");
-	
-	if (!authHeader) {
-		return new Response(
-			JSON.stringify({
-				error: "Missing Authorization header",
-				hint: "Include 'Authorization: Bearer YOUR_API_KEY' in your request",
-			}),
-			{
-				status: 401,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
-	}
-
-	// Validate Bearer token format
-	const token = authHeader.replace("Bearer ", "");
-	
-	if (token !== env.API_KEY) {
-		return new Response(
-			JSON.stringify({
-				error: "Invalid API key",
-			}),
-			{
-				status: 403,
-				headers: { "Content-Type": "application/json" },
-			}
-		);
-	}
-
-	return null; // Authentication successful
-}
-
-// CORS headers helper
-function corsHeaders() {
-	return {
-		"Access-Control-Allow-Origin": "*",
-		"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-		"Access-Control-Allow-Headers": "Content-Type, Authorization",
-	};
-}
 
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 
 		// Handle CORS preflight
-		if (request.method === "OPTIONS") {
-			return new Response(null, {
-				headers: corsHeaders(),
-			});
-		}
+if (request.method === "OPTIONS") {
+    return handleCorsPrelight();
+}
 
 		// Authenticate request
 		const authError = authenticate(request, env);

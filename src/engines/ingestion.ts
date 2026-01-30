@@ -1,4 +1,4 @@
-import { Document, ImageDocument, Chunk } from '../types/document';
+import { Document, ImageDocument} from '../types/document';
 import { Env } from '../types/env';
 import { ChunkingEngine } from './chunking';
 import { KeywordSearchEngine } from './keyword';

@@ -1,5 +1,4 @@
 import { SearchResult } from '../types/search';
-import { Env } from '../types/env';
 
 export class KeywordSearchEngine {
 	private k1 = 1.2;
