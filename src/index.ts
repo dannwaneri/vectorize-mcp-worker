@@ -1,48 +1,9 @@
-export interface Env {
-	AI: Ai;
-	VECTORIZE: VectorizeIndex;
-	DB: D1Database;
-	API_KEY?: string;
-	MULTIMODAL: Fetcher;
-}
+import { Env } from './types/env';
+import { Document, ImageDocument, Chunk } from './types/document';
+import { SearchResult, HybridSearchResult } from './types/search';
 
-// Types
-interface Document {
-	id: string;
-	content: string;
-	title?: string;
-	source?: string;
-	category?: string;
-}
 
-interface ImageDocument extends Document {
-	imageBuffer: ArrayBuffer;
-	imageDescription?: string;
-	imageType?: 'screenshot' | 'diagram' | 'photo' | 'document' | 'chart' | 'auto'; // ADD THIS LINE
-}
 
-interface Chunk {
-	id: string;
-	content: string;
-	parentId: string;
-	chunkIndex: number;
-}
-
-interface SearchResult {
-	id: string;
-	content: string;
-	score: number;
-	category?: string;
-	source: 'vector' | 'keyword' | 'hybrid';
-	isImage?: boolean;
-}
-
-interface HybridSearchResult extends SearchResult {
-	vectorScore?: number;
-	keywordScore?: number;
-	rerankerScore?: number;
-	rrfScore: number;
-}
 
 // Chunking Engine - respects semantic boundaries with 15% overlap
 class ChunkingEngine {
