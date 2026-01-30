@@ -1,10 +1,9 @@
 import { Env } from './types/env';
-import { HybridSearchEngine } from './engines/hybrid';
 import { IngestionEngine } from './engines/ingestion';
 import { authenticate } from './middleware/auth';
 import { corsHeaders, handleCorsPrelight } from './middleware/cors';
 
-import { handleSearch } from './handlers/search';
+import { handleSearch, handleClassifyIntent } from './handlers/search';
 import { handleIngest } from './handlers/ingest';
 import { handleStats } from './handlers/stats';
 
@@ -187,6 +186,9 @@ if (url.pathname === "/find-similar-images" && request.method === "POST") {
     return handleFindSimilarImages(request, env);
 }
 
+if (url.pathname === "/classify-intent" && request.method === "POST") {
+    return handleClassifyIntent(request, env);
+}
 
 // 404 for unknown routes
 		return new Response(

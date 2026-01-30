@@ -1,6 +1,7 @@
 import { Env } from '../types/env';
 import { HybridSearchEngine } from '../engines/hybrid';
 import { corsHeaders } from '../middleware/cors';
+import { IntentClassifier } from '../router/intentClassifier';
 
 const hybridSearch = new HybridSearchEngine();
 
@@ -61,3 +62,32 @@ export async function handleSearch(request: Request, env: Env): Promise<Response
 		);
 	}
 }
+
+
+export async function handleClassifyIntent(request: Request, env: Env): Promise<Response> {
+	try {
+	  const body = await request.json<{ query: string; hasImage?: boolean }>();
+	  
+	  if (!body.query) {
+		return new Response(
+		  JSON.stringify({ error: "Missing query" }),
+		  { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } }
+		);
+	  }
+  
+	  const classifier = new IntentClassifier(env);
+	  const result = await classifier.classify(body.query, body.hasImage || false);
+  
+	  return new Response(
+		JSON.stringify(result),
+		{ headers: { "Content-Type": "application/json", ...corsHeaders() } }
+	  );
+	} catch (error) {
+	  return new Response(
+		JSON.stringify({ 
+		  error: error instanceof Error ? error.message : "Classification failed" 
+		}),
+		{ status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } }
+	  );
+	}
+  }
