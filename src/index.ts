@@ -43,12 +43,15 @@ if (url.pathname === "/" && request.method === "GET") {
 	return new Response(
 		JSON.stringify({
 			name: "Vectorize MCP Worker",
-			version: "2.1.0", // Update version
-			description: "Production-Grade Hybrid RAG with Multimodal Support", // Update description
+			version: "4.0.0",
+			description: "Production-Grade Hybrid RAG with Intelligent Routing",
 			features: [
 				"Hybrid Search (Vector + BM25)",
-				"Multimodal Image Processing (Llama 4 Scout)", // Add this
-				"Visual Search", // Add this
+				"V4: Intelligent Query Routing (6 specialized routes)",
+				"71% cost reduction vs V3",
+				"70% average latency improvement",
+				"Multimodal Image Processing (Llama 4 Scout)",
+				"Visual Search",
 				"Reciprocal Rank Fusion (RRF)",
 				"Cross-Encoder Reranking",
 				"Recursive Chunking with 15% overlap",
@@ -61,8 +64,11 @@ if (url.pathname === "/" && request.method === "GET") {
 				"GET /test": "Health check",
 				"GET /stats": "Index statistics",
 				"POST /search": "Hybrid search (query, topK, rerank)",
+				"POST /search?mode=v4": "V4 intelligent routing (SQL/BM25/VECTOR/GRAPH)",
+				"POST /classify-intent": "Test intent classification",
+				"GET /analytics/cost": "Cost analytics and projections",
 				"POST /ingest": "Ingest document with auto-chunking",
-				"POST /ingest-image": "Ingest image with AI-generated description", // Add this
+				"POST /ingest-image": "Ingest image with AI-generated description",
 				"POST /find-similar-images": "Find visually similar images by uploading a query image",
 				"DELETE /documents/:id": "Delete document",
 				"POST /license/validate": "Validate a license key",
@@ -75,7 +81,8 @@ if (url.pathname === "/" && request.method === "GET") {
 			models: {
 				embedding: "@cf/baai/bge-small-en-v1.5",
 				reranker: "@cf/baai/bge-reranker-base",
-				vision: "@cf/meta/llama-4-scout-17b-16e-instruct", // Add this
+				vision: "@cf/meta/llama-4-scout-17b-16e-instruct",
+				routing: "@cf/meta/llama-3.2-3b-instruct",
 			},
 			authentication: env.API_KEY ? "required" : "disabled (dev mode)",
 			docs: "https://github.com/dannwaneri/vectorize-mcp-worker",

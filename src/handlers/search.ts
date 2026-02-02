@@ -3,6 +3,7 @@ import { HybridSearchEngine } from '../engines/hybrid';
 import { corsHeaders } from '../middleware/cors';
 import { IntentClassifier } from '../router/intentClassifier';
 import { RouteSelector } from '../router/routeSelector';
+import { SemanticHighlighter } from '../highlighting/semanticHighlight';
 
 const hybridSearch = new HybridSearchEngine();
 
@@ -11,12 +12,14 @@ export async function handleSearch(request: Request, env: Env): Promise<Response
   try {
     const url = new URL(request.url);
     const useV4 = url.searchParams.get('mode') === 'v4';
+    const useHighlighting = url.searchParams.get('highlight') !== 'false';
     
     const body = await request.json<{ 
       query: string; 
       topK?: number; 
       rerank?: boolean;
       offset?: number;
+      highlight?: boolean;
     }>();
     
     if (!body.query) {
@@ -37,6 +40,23 @@ export async function handleSearch(request: Request, env: Env): Promise<Response
         },
         env
       );
+      
+      
+if (useHighlighting && (body.highlight !== false)) {
+  const highlighter = new SemanticHighlighter(env);
+  const highlightedResults = await highlighter.highlightResults(body.query, result.results);
+  
+  return new Response(
+    JSON.stringify({
+      version: 'v4',
+      query: body.query,
+      performance: result.performance,
+      metadata: result.metadata,
+      cost: result.cost,
+      results: highlightedResults
+
+    }),
+    )}
       
       return new Response(
         JSON.stringify({
@@ -60,22 +80,43 @@ export async function handleSearch(request: Request, env: Env): Promise<Response
       body.rerank !== false
     );
     
+    const slicedResults = results.slice(offset, offset + topK);
+    
+    // Add highlighting to V3 results too
+    if (useHighlighting && (body.highlight !== false)) {
+      const highlighter = new SemanticHighlighter(env);
+      const highlightedResults = await highlighter.highlightResults(body.query, slicedResults);
+      
+      return new Response(
+        JSON.stringify({
+          version: 'v3',
+          query: body.query,
+          topK,
+          offset,
+          resultsCount: highlightedResults.length,
+          results: highlightedResults,
+          performance
+        }),
+        { headers: { "Content-Type": "application/json", ...corsHeaders() } }
+      );
+    }
+    
     return new Response(
       JSON.stringify({
         version: 'v3',
         query: body.query,
         topK,
         offset,
-        resultsCount: results.length,
-        results: results.slice(offset, offset + topK).map(r => ({
+        resultsCount: slicedResults.length,
+        results: slicedResults.map(r => ({
           id: r.id,
-          score: r.rrfScore,
+          score: r.rrfScore || r.score,
           content: r.content,
           category: r.category,
           scores: {
-            vector: r.vectorScore,
-            keyword: r.keywordScore,
-            reranker: r.rerankerScore
+            vector: (r as any).vectorScore,
+            keyword: (r as any).keywordScore,
+            reranker: (r as any).rerankerScore
           }
         })),
         performance
@@ -119,4 +160,4 @@ export async function handleClassifyIntent(request: Request, env: Env): Promise<
 		{ status: 500, headers: { "Content-Type": "application/json", ...corsHeaders() } }
 	  );
 	}
-  }
+}
