@@ -24,7 +24,7 @@ export function getDashboardHTML(): string {
     "name": "Daniel Nwaneri",
     "url": "https://github.com/dannwaneri"
   },
-  "softwareVersion": "2.1.0",
+  "softwareVersion": "4.0",
   "url": "https://github.com/dannwaneri/vectorize-mcp-worker"
 }
 </script>
@@ -71,6 +71,22 @@ button:disabled{background:#ccc;cursor:not-allowed}
 .route-vision{background:#ec4899;color:#fff}
 .route-ocr{background:#ef4444;color:#fff}
 .cost-display{font-size:0.75rem;color:#059669;margin-top:4px}
+/* Semantic Highlighting Styles */
+.semantic-highlight{background:linear-gradient(120deg,#fef08a 0%,#fde047 100%);padding:2px 4px;border-radius:3px;font-weight:500;transition:all 0.2s ease;cursor:help;position:relative}
+.semantic-highlight:hover{background:linear-gradient(120deg,#fde047 0%,#facc15 100%);box-shadow:0 2px 4px rgba(0,0,0,0.1)}
+.semantic-highlight[data-score^="0.9"],.semantic-highlight[data-score="1.00"]{background:linear-gradient(120deg,#86efac 0%,#4ade80 100%)}
+.semantic-highlight[data-score^="0.8"]{background:linear-gradient(120deg,#bef264 0%,#a3e635 100%)}
+.semantic-highlight[data-score^="0.7"]{background:linear-gradient(120deg,#fef08a 0%,#fde047 100%)}
+.semantic-highlight[data-score^="0.6"]{background:linear-gradient(120deg,#fed7aa 0%,#fdba74 100%)}
+.semantic-highlight[data-score^="0.5"]{background:linear-gradient(120deg,#fecaca 0%,#fca5a5 100%)}
+.semantic-highlight::after{content:attr(data-score);position:absolute;bottom:100%;left:50%;transform:translateX(-50%) translateY(-4px);background:rgba(0,0,0,0.9);color:white;padding:4px 8px;border-radius:4px;font-size:11px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity 0.2s ease}
+.semantic-highlight:hover::after{opacity:1}
+.result-snippet{margin-top:8px;padding:8px 12px;background:#f8fafc;border-left:3px solid #3b82f6;border-radius:4px;font-size:13px;color:#475569;font-style:italic}
+.snippet-label{font-size:11px;text-transform:uppercase;font-weight:600;color:#64748b;margin-bottom:4px}
+.highlight-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:#e0f2fe;color:#0369a1;border-radius:12px;font-size:11px;font-weight:600;margin-left:8px}
+.highlight-badge.high-score{background:#dcfce7;color:#15803d}
+.highlight-badge.medium-score{background:#fef3c7;color:#a16207}
+.highlight-badge.low-score{background:#fee2e2;color:#b91c1c}
 .perf{margin-top:14px;padding:12px;background:#f9fafb;border:1px solid #e5e5e5;border-radius:8px}
 .perf-title{font-size:0.75rem;color:#888;margin-bottom:8px}
 .perf-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
@@ -225,6 +241,30 @@ h1{font-size:1.5rem}
 <button onclick="search()">🔍 Search</button>
 </div>
 <label><input type="checkbox" id="useRerank" checked> Use Reranker (more accurate)</label>
+<label class="checkbox-label" style="margin-top:8px">
+  <input type="checkbox" id="useHighlighting" checked style="width:auto;margin:0 8px 0 0">
+  <span style="display:flex;align-items:center;gap:4px">
+    Semantic Highlighting
+    <span style="font-size:11px;color:#64748b">(+150ms)</span>
+  </span>
+</label>
+<div id="highlightControls" style="margin-top:8px;padding:8px;background:#f8fafc;border-radius:4px;display:none">
+  <label style="font-size:12px;color:#475569;display:block;margin-bottom:4px">
+    Similarity Threshold: <span id="thresholdValue">0.75</span>
+  </label>
+  <input 
+    type="range" 
+    id="highlightThreshold" 
+    min="0.5" 
+    max="0.9" 
+    step="0.05" 
+    value="0.75"
+    style="width:100%;margin-bottom:4px"
+  >
+  <div style="font-size:11px;color:#64748b;margin-top:4px">
+    Lower = more highlights, Higher = fewer but more relevant
+  </div>
+</div>
 <div id="searchResults" class="results"></div>
 <div id="searchPerf" class="perf" style="display:none">
 <div class="perf-title">⚡ Performance</div>
@@ -403,7 +443,9 @@ const query = document.getElementById('searchQuery').value;
 if(!query) { res.innerHTML = '<span class="error">Enter a query</span>'; return; }
 
 const useV4 = document.getElementById('useV4Mode').checked;
-const searchUrl = useV4 ? API_BASE + '/search?mode=v4' : API_BASE + '/search';
+const useHighlighting = document.getElementById('useHighlighting').checked;
+const highlightParam = useHighlighting ? '&highlight=true' : '&highlight=false';
+const searchUrl = useV4 ? API_BASE + '/search?mode=v4' + highlightParam : API_BASE + '/search' + highlightParam;
 
 try {
 const r = await fetch(searchUrl, {
@@ -412,15 +454,23 @@ headers: getHeaders(),
 body: JSON.stringify({
 query,
 topK: parseInt(document.getElementById('topK').value),
-rerank: document.getElementById('useRerank').checked
+rerank: document.getElementById('useRerank').checked,
+highlight: useHighlighting
 })
 });
 
 const d = await r.json();
 if(d.error) { res.innerHTML = '<span class="error">' + d.error + '</span>'; return; }
 
+// Helper function to escape HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 // Display results with V4 metadata if present
-res.innerHTML = d.results.map(r => {
+res.innerHTML = d.results.map((r, index) => {
 let routeBadge = '';
 let costDisplay = '';
 
@@ -429,6 +479,32 @@ if (d.metadata?.route) {
 const routeClass = 'route-' + d.metadata.route.toLowerCase();
 routeBadge = \`<span class="\${routeClass} route-badge">\${d.metadata.route}</span>\`;
 }
+
+// Highlight badge
+const highlightBadge = r.highlights && r.highlights.length > 0 
+  ? (() => {
+      const avgScore = r.highlights.reduce((sum, h) => sum + h.score, 0) / r.highlights.length;
+      const badgeClass = avgScore >= 0.8 ? 'high-score' : avgScore >= 0.6 ? 'medium-score' : 'low-score';
+      return \`<span class="highlight-badge \${badgeClass}">
+        ✨ \${r.highlights.length} highlights (avg: \${avgScore.toFixed(2)})
+      </span>\`;
+    })()
+  : '';
+
+// CRITICAL FIX: Don't escape highlightedContent (it already has safe <mark> tags)
+const contentHTML = r.highlightedContent && r.highlights && r.highlights.length > 0
+  ? r.highlightedContent  // Has <mark> tags - render as HTML
+  : escapeHtml(r.content.substring(0,300) + (r.content.length>300?'...':'')); // No highlights - escape for safety
+
+// Snippets section
+const snippetsHTML = r.snippets && r.snippets.length > 0
+  ? \`
+    <div class="result-snippet">
+      <div class="snippet-label">Best Match</div>
+      \${r.snippets[0]}
+    </div>
+  \`
+  : '';
 
 // Add cost if present
 if (d.cost) {
@@ -439,10 +515,11 @@ return \`
 <div class="result">
 <div class="result-header">
 \${r.isImage ? '<span class="image-badge">📸 IMAGE</span>' : ''}
-<span class="result-id">\${r.id}\${routeBadge}</span>
+<span class="result-id">#\${index + 1}: \${r.id}\${routeBadge}\${highlightBadge}</span>
 <span class="result-score">Score: \${r.score.toFixed(4)}</span>
 </div>
-<div class="result-content">\${r.content.substring(0,300)}\${r.content.length>300?'...':''}</div>
+<div class="result-content">\${contentHTML}</div>
+\${snippetsHTML}
 \${r.category ? '<span class="result-category">' + r.category + '</span>' : ''}
 \${costDisplay}
 </div>
@@ -452,9 +529,18 @@ return \`
 // Update performance display
 perf.style.display = 'block';
 
-let perfHTML = Object.entries(d.performance).map(([k,v]) => 
-'<div class="perf-item">' + k + ': <span>' + v + '</span></div>'
-).join('');
+const perfEntries = Object.entries(d.performance);
+const hasHighlighting = perfEntries.some(([key]) => key.toLowerCase().includes('highlight'));
+
+let perfHTML = \`<div class="perf-title">⚡ Performance\${hasHighlighting ? ' <span style="color:#3b82f6;font-size:11px">(with highlighting)</span>' : ''}</div><div class="perf-grid">\`;
+
+perfHTML += perfEntries.map(([k,v]) => {
+  const isHighlightMetric = k.toLowerCase().includes('highlight');
+  const style = isHighlightMetric ? 'color:#3b82f6;font-weight:600;' : '';
+  return '<div class="perf-item" style="' + style + '">' + k + ': <span>' + v + '</span></div>';
+}).join('');
+
+perfHTML += '</div>';
 
 // Add V4 metadata if present
 if (d.metadata) {
@@ -465,7 +551,7 @@ perfHTML += \`<div class="perf-item" style="grid-column:span 2;margin-top:8px;pa
 </div>\`;
 }
 
-document.getElementById('perfGrid').innerHTML = perfHTML;
+perf.innerHTML = perfHTML;
 
 } catch(e) { 
 res.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; 
@@ -541,6 +627,26 @@ demoLog.innerHTML = '<span class="success">✓ Search complete!</span> OCR extra
 }
 
 document.getElementById('searchQuery').addEventListener('keypress', e => { if(e.key === 'Enter') search(); });
+
+// Highlighting toggle
+const highlightingCheckbox = document.getElementById('useHighlighting');
+const highlightControls = document.getElementById('highlightControls');
+const thresholdSlider = document.getElementById('highlightThreshold');
+const thresholdValue = document.getElementById('thresholdValue');
+
+highlightingCheckbox.addEventListener('change', (e) => {
+  if (e.target.checked) {
+    highlightControls.style.display = 'block';
+  } else {
+    highlightControls.style.display = 'none';
+  }
+});
+
+// Threshold slider
+thresholdSlider.addEventListener('input', (e) => {
+  thresholdValue.textContent = e.target.value;
+});
+
 loadStats();
 testAuth();
 </script>
