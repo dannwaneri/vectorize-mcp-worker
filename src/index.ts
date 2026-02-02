@@ -17,6 +17,8 @@ import { getLlmsTxt } from './ui/llmsTxt';
 import { handleLicenseValidate, handleLicenseCreate, handleLicenseList, handleLicenseRevoke } from './handlers/license';
 import { handleMcpTools, handleMcpCall } from './handlers/mcp';
 
+import { handleCostAnalytics } from './handlers/analytics';
+
 
 const ingestion = new IngestionEngine();
 
@@ -189,6 +191,10 @@ if (url.pathname === "/find-similar-images" && request.method === "POST") {
 if (url.pathname === "/classify-intent" && request.method === "POST") {
     return handleClassifyIntent(request, env);
 }
+
+if (url.pathname === "/analytics/cost" && request.method === "GET") {
+	return handleCostAnalytics(request, env);
+  }
 
 // 404 for unknown routes
 		return new Response(

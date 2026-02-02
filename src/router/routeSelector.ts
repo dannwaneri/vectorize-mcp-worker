@@ -10,6 +10,8 @@ import { graphRoute } from './routes/graphRoute';
 import { ocrRoute } from './routes/ocrRoute';
 import { visionRoute } from './routes/visionRoute';
 
+import { CostTracker, RouteCost } from '../analytics/costTracker';
+
 /**
  * Route Selector
  * 
@@ -35,7 +37,7 @@ export class RouteSelector {
       imageBuffer?: ArrayBuffer;
     },
     env: Env
-  ): Promise<RouteResult> {
+  ): Promise<RouteResult & { cost?: RouteCost }> {
     
     const startTime = Date.now();
     
@@ -105,7 +107,50 @@ export class RouteSelector {
     result.metadata.intent = classification.intent;
     result.performance.routingTime = `${totalTime}ms`;
     
-    return result;
+    // Add cost calculation based on route
+    let cost: RouteCost | undefined;
+    
+    switch (classification.intent) {
+      case 'ENTITY_LOOKUP':
+        cost = CostTracker.calculateRouteCost('SQL', { d1Reads: 1 });
+        break;
+      
+      case 'KEYWORD_EXACT':
+        cost = CostTracker.calculateRouteCost('BM25', { d1Reads: 50 });
+        break;
+      
+      case 'SEMANTIC_SEARCH':
+        cost = CostTracker.calculateRouteCost('VECTOR', {
+          embeddings: 1,
+          vectorQueries: 1,
+          d1Reads: 50,
+          rerankerCalls: context.topK && context.topK > 5 ? 1 : 0,
+        });
+        break;
+      
+      case 'GRAPH_REASONING':
+        cost = CostTracker.calculateRouteCost('GRAPH', { d1Reads: 10 });
+        break;
+      
+      case 'VISUAL_ANALYSIS':
+        cost = CostTracker.calculateRouteCost('VISION', {
+          llm4ScoutTokens: 500,
+          embeddings: 1,
+        });
+        break;
+      
+      case 'OCR_DOCUMENT':
+        cost = CostTracker.calculateRouteCost('OCR', {
+          llm4ScoutTokens: 300,
+          embeddings: 1,
+        });
+        break;
+    }
+    
+    return {
+      ...result,
+      cost
+    };
   }
 
   /**

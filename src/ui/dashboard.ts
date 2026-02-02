@@ -63,6 +63,14 @@ button:disabled{background:#ccc;cursor:not-allowed}
 .result-content{font-size:0.85rem;color:#444;line-height:1.5;word-break:break-word}
 .result-category{display:inline-block;font-size:0.65rem;background:#4f46e5;color:#fff;padding:2px 8px;border-radius:4px;margin-top:6px}
 .image-badge{background:#f97316;color:#fff;padding:2px 8px;border-radius:4px;font-size:0.7rem;font-weight:600;display:inline-block}
+.route-badge{display:inline-block;font-size:0.7rem;padding:2px 8px;border-radius:4px;font-weight:600;margin-left:8px}
+.route-sql{background:#10b981;color:#fff}
+.route-bm25{background:#3b82f6;color:#fff}
+.route-vector{background:#8b5cf6;color:#fff}
+.route-graph{background:#f59e0b;color:#fff}
+.route-vision{background:#ec4899;color:#fff}
+.route-ocr{background:#ef4444;color:#fff}
+.cost-display{font-size:0.75rem;color:#059669;margin-top:4px}
 .perf{margin-top:14px;padding:12px;background:#f9fafb;border:1px solid #e5e5e5;border-radius:8px}
 .perf-title{font-size:0.75rem;color:#888;margin-bottom:8px}
 .perf-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
@@ -123,6 +131,35 @@ h1{font-size:1.5rem}
 <button onclick="testAuth()">Test</button>
 </div>
 <div id="authStatus" class="log" style="display:none"></div>
+</div>
+
+<!-- V4 Mode Toggle Section -->
+<div class="v4-section" style="margin-bottom:16px;padding:16px;background:#f0f9ff;border:1px solid #0ea5e9;border-radius:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h3 style="margin:0;color:#0369a1;font-size:1rem">🚀 V4 Intelligent Routing</h3>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
+      <input type="checkbox" id="useV4Mode" style="width:auto;margin:0">
+      <span style="font-weight:600;color:#0369a1">Enable V4</span>
+    </label>
+  </div>
+  
+  <div id="v4Info" style="display:none;font-size:0.85rem;color:#0c4a6e;line-height:1.5">
+    <p style="margin:0 0 8px 0"><strong>Active:</strong> Intelligent query routing based on intent classification</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
+      <div style="background:#fff;padding:8px;border-radius:6px;text-align:center">
+        <div style="font-size:0.7rem;color:#64748b">SQL Route</div>
+        <div style="font-size:1.1rem;font-weight:700;color:#059669">~45ms</div>
+      </div>
+      <div style="background:#fff;padding:8px;border-radius:6px;text-align:center">
+        <div style="font-size:0.7rem;color:#64748b">BM25 Route</div>
+        <div style="font-size:1.1rem;font-weight:700;color:#059669">~50ms</div>
+      </div>
+      <div style="background:#fff;padding:8px;border-radius:6px;text-align:center">
+        <div style="font-size:0.7rem;color:#64748b">Cost Savings</div>
+        <div style="font-size:1.1rem;font-weight:700;color:#059669">88%</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="grid">
@@ -194,6 +231,22 @@ h1{font-size:1.5rem}
 <div class="perf-grid" id="perfGrid"></div>
 </div>
 </div>
+
+<div class="card" style="grid-column:span 3">
+  <h2><span>💰</span> Cost Analytics</h2>
+  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px">
+    <div>
+      <label>Queries per Day</label>
+      <input type="number" id="queriesPerDay" value="1000" min="100" max="100000">
+      <button onclick="loadCostAnalytics()">Calculate Costs</button>
+    </div>
+    <div id="costResults" style="background:#f9fafb;border:1px solid #e5e5e5;border-radius:8px;padding:12px">
+      <div style="font-size:0.75rem;color:#888;margin-bottom:8px">Monthly Cost Projection</div>
+      <div id="costProjection">Click "Calculate Costs" to see projection</div>
+    </div>
+  </div>
+  <div id="costBreakdown" style="display:none;margin-top:12px"></div>
+</div>
 </div>
 
 <div class="footer">
@@ -242,6 +295,7 @@ async function compressImage(file, maxWidth = 1920, maxHeight = 1080, quality = 
         reader.readAsDataURL(file);
     });
 }
+
 async function testAuth(){
 const el = document.getElementById('authStatus');
 el.style.display = 'block';
@@ -332,41 +386,142 @@ async function ingestImage(){
 	loadStats();
 	} else { log.innerHTML = '<span class="error">✗ ' + (d.error || 'Unknown error') + '</span>'; }
 	} catch(e) { log.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; }
-	}
+}
+
+// Toggle V4 info display
+document.getElementById('useV4Mode').addEventListener('change', (e) => {
+  const v4Info = document.getElementById('v4Info');
+  v4Info.style.display = e.target.checked ? 'block' : 'none';
+});
 
 async function search(){
 const res = document.getElementById('searchResults');
 const perf = document.getElementById('searchPerf');
 res.innerHTML = 'Searching...';
+
 const query = document.getElementById('searchQuery').value;
 if(!query) { res.innerHTML = '<span class="error">Enter a query</span>'; return; }
+
+const useV4 = document.getElementById('useV4Mode').checked;
+const searchUrl = useV4 ? API_BASE + '/search?mode=v4' : API_BASE + '/search';
+
 try {
-const r = await fetch(API_BASE + '/search', {
-method: 'POST', headers: getHeaders(),
+const r = await fetch(searchUrl, {
+method: 'POST', 
+headers: getHeaders(),
 body: JSON.stringify({
 query,
 topK: parseInt(document.getElementById('topK').value),
 rerank: document.getElementById('useRerank').checked
 })
 });
+
 const d = await r.json();
 if(d.error) { res.innerHTML = '<span class="error">' + d.error + '</span>'; return; }
-res.innerHTML = d.results.map(r => \`
+
+// Display results with V4 metadata if present
+res.innerHTML = d.results.map(r => {
+let routeBadge = '';
+let costDisplay = '';
+
+// Add route badge if V4 mode
+if (d.metadata?.route) {
+const routeClass = 'route-' + d.metadata.route.toLowerCase();
+routeBadge = \`<span class="\${routeClass} route-badge">\${d.metadata.route}</span>\`;
+}
+
+// Add cost if present
+if (d.cost) {
+costDisplay = \`<div class="cost-display">Cost: \${d.cost.totalCost < 0.000001 ? '<$0.000001' : '$' + d.cost.totalCost.toFixed(6)} per query</div>\`;
+}
+
+return \`
 <div class="result">
 <div class="result-header">
 \${r.isImage ? '<span class="image-badge">📸 IMAGE</span>' : ''}
-<span class="result-id">\${r.id}</span>
+<span class="result-id">\${r.id}\${routeBadge}</span>
 <span class="result-score">Score: \${r.score.toFixed(4)}</span>
 </div>
 <div class="result-content">\${r.content.substring(0,300)}\${r.content.length>300?'...':''}</div>
 \${r.category ? '<span class="result-category">' + r.category + '</span>' : ''}
+\${costDisplay}
 </div>
-\`).join('') || '<span class="error">No results</span>';
+\`;
+}).join('') || '<span class="error">No results</span>';
+
+// Update performance display
 perf.style.display = 'block';
-document.getElementById('perfGrid').innerHTML = Object.entries(d.performance).map(([k,v]) => 
+
+let perfHTML = Object.entries(d.performance).map(([k,v]) => 
 '<div class="perf-item">' + k + ': <span>' + v + '</span></div>'
 ).join('');
-} catch(e) { res.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; }
+
+// Add V4 metadata if present
+if (d.metadata) {
+perfHTML += \`<div class="perf-item" style="grid-column:span 2;margin-top:8px;padding-top:8px;border-top:1px solid #e5e5e5">
+<strong>Route:</strong> \${d.metadata.route} | 
+<strong>Intent:</strong> \${d.metadata.intent}
+\${d.metadata.reasoning ? '<br><em>' + d.metadata.reasoning + '</em>' : ''}
+</div>\`;
+}
+
+document.getElementById('perfGrid').innerHTML = perfHTML;
+
+} catch(e) { 
+res.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; 
+}
+}
+
+async function loadCostAnalytics() {
+  const queriesPerDay = document.getElementById('queriesPerDay').value;
+  const costProjection = document.getElementById('costProjection');
+  const costBreakdown = document.getElementById('costBreakdown');
+  
+  costProjection.innerHTML = 'Calculating...';
+  
+  try {
+    const r = await fetch(API_BASE + '/analytics/cost?queriesPerDay=' + queriesPerDay, {
+      headers: getHeaders()
+    });
+    const d = await r.json();
+    
+    costProjection.innerHTML = \`
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+        <div>
+          <div style="font-size:0.7rem;color:#888">V3 Cost (Hybrid Only)</div>
+          <div style="font-size:1.3rem;font-weight:700;color:#dc2626">\${d.monthlyProjection.v3Cost}</div>
+        </div>
+        <div>
+          <div style="font-size:0.7rem;color:#888">V4 Cost (Smart Routing)</div>
+          <div style="font-size:1.3rem;font-weight:700;color:#059669">\${d.monthlyProjection.v4Cost}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e5e5">
+        <div style="font-size:0.7rem;color:#888">Monthly Savings</div>
+        <div style="font-size:1.5rem;font-weight:700;color:#059669">
+          \${d.monthlyProjection.savings} 
+          <span style="font-size:0.9rem">(\${d.monthlyProjection.savingsPercent})</span>
+        </div>
+      </div>
+    \`;
+    
+    // Show breakdown
+    costBreakdown.style.display = 'block';
+    costBreakdown.innerHTML = \`
+      <div style="font-size:0.8rem;font-weight:600;margin-bottom:8px">Cost by Route (\${queriesPerDay} queries/day)</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        \${Object.entries(d.monthlyProjection.breakdownByRoute).map(([route, cost]) => \`
+          <div style="background:#f9fafb;padding:8px;border-radius:6px">
+            <div style="font-size:0.7rem;color:#888">\${route}</div>
+            <div style="font-size:0.9rem;font-weight:600">\${cost}</div>
+          </div>
+        \`).join('')}
+      </div>
+    \`;
+    
+  } catch(e) {
+    costProjection.innerHTML = '<span class="error">Failed to load analytics</span>';
+  }
 }
 
 async function searchImages(){
