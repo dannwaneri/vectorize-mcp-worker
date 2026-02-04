@@ -7,6 +7,16 @@ import { SemanticHighlighter } from '../highlighting/semanticHighlight';
 
 const hybridSearch = new HybridSearchEngine();
 
+// Singleton highlighter to maintain cache between requests
+let globalHighlighter: SemanticHighlighter | null = null;
+
+function getHighlighter(env: Env): SemanticHighlighter {
+  if (!globalHighlighter) {
+    globalHighlighter = new SemanticHighlighter(env);
+  }
+  return globalHighlighter;
+}
+
 
 export async function handleSearch(request: Request, env: Env): Promise<Response> {
   try {
@@ -41,22 +51,28 @@ export async function handleSearch(request: Request, env: Env): Promise<Response
         env
       );
       
-      
-if (useHighlighting && (body.highlight !== false)) {
-  const highlighter = new SemanticHighlighter(env);
-  const highlightedResults = await highlighter.highlightResults(body.query, result.results);
-  
-  return new Response(
-    JSON.stringify({
-      version: 'v4',
-      query: body.query,
-      performance: result.performance,
-      metadata: result.metadata,
-      cost: result.cost,
-      results: highlightedResults
-
-    }),
-    )}
+      // Add semantic highlighting if requested
+      if (useHighlighting && (body.highlight !== false)) {
+        const highlightStart = Date.now();
+        const highlighter = getHighlighter(env);
+        const highlightedResults = await highlighter.highlightResults(body.query, result.results);
+        const highlightTime = Date.now() - highlightStart;
+        
+        return new Response(
+          JSON.stringify({
+            version: 'v4',
+            query: body.query,
+            performance: {
+              ...result.performance,
+              highlightingTime: `${highlightTime}ms`
+            },
+            metadata: result.metadata,
+            cost: result.cost,
+            results: highlightedResults
+          }),
+          { headers: { "Content-Type": "application/json", ...corsHeaders() } }
+        );
+      }
       
       return new Response(
         JSON.stringify({
@@ -84,8 +100,10 @@ if (useHighlighting && (body.highlight !== false)) {
     
     // Add highlighting to V3 results too
     if (useHighlighting && (body.highlight !== false)) {
-      const highlighter = new SemanticHighlighter(env);
+      const highlightStart = Date.now();
+      const highlighter = getHighlighter(env);
       const highlightedResults = await highlighter.highlightResults(body.query, slicedResults);
+      const highlightTime = Date.now() - highlightStart;
       
       return new Response(
         JSON.stringify({
@@ -95,7 +113,10 @@ if (useHighlighting && (body.highlight !== false)) {
           offset,
           resultsCount: highlightedResults.length,
           results: highlightedResults,
-          performance
+          performance: {
+            ...performance,
+            highlightingTime: `${highlightTime}ms`
+          }
         }),
         { headers: { "Content-Type": "application/json", ...corsHeaders() } }
       );

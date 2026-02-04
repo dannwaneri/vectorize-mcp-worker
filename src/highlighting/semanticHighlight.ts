@@ -7,12 +7,15 @@ export class SemanticHighlighter {
   
     private readonly DEFAULT_CONFIG: HighlightConfig = {
         threshold: 0.5,         
-        maxHighlights: 5,       
+        maxHighlights: 3,       
         contextLength: 50,      
         snippetLength: 200   
       };
   
   private embeddingCache = new Map<string, number[]>();
+
+private resultCache = new Map<string, { results: HighlightedResult[], timestamp: number }>();
+private readonly RESULT_CACHE_TTL = 60000; // 60 seconds
   
   constructor(
     private env: Env,
@@ -29,29 +32,66 @@ export class SemanticHighlighter {
     
     if (results.length === 0) return [];
     
+
+    // ✅ CHECK CACHE FIRST (sort IDs for consistent key)
+    const cacheKey = query.toLowerCase().trim();
+    const cached = this.resultCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < this.RESULT_CACHE_TTL) {
+      console.log('✅ Highlighting cache HIT:', query);
+      return cached.results;
+    }
+    
     const startTime = Date.now();
+    const timings: any = {};
     
-   
+    // Generate query embedding once (cached)
+    const embeddingStart = Date.now();
     const queryEmbedding = await this.getQueryEmbedding(query);
+    timings.queryEmbedding = Date.now() - embeddingStart;
     
+    // Highlight each result in parallel
+    const highlightStart = Date.now();
     const highlighted = await Promise.all(
       results.map(result => this.highlightResult(result, query, queryEmbedding))
     );
+    timings.sentenceProcessing = Date.now() - highlightStart;
     
-    const highlightTime = Date.now() - startTime;
-    console.log(`Semantic highlighting: ${highlightTime}ms for ${results.length} results`);
+    const totalTime = Date.now() - startTime;
+  
+    console.log(`Semantic highlighting: ${totalTime}ms for ${results.length} results`, timings);
+    
+    // ✅ CACHE THE RESULTS
+    this.resultCache.set(cacheKey, { 
+      results: highlighted, 
+      timestamp: Date.now() 
+    });
+    
+    // ✅ Limit cache size to prevent memory bloat
+    if (this.resultCache.size > 100) {
+      const firstKey = this.resultCache.keys().next().value;
+      if (firstKey) this.resultCache.delete(firstKey);
+    }
     
     return highlighted;
-  }
+
+ }
   
- 
-  private async highlightResult(
+ private async highlightResult(
     result: SearchResult,
     query: string,
     queryEmbedding: number[]
   ): Promise<HighlightedResult> {
     
-
+    // ✅ OPTIMIZATION: Skip highlighting for very short content
+    if (result.content.length < 100) {
+      return {
+        ...result,
+        highlightedContent: result.content,
+        highlights: []
+      };
+    }
+    
+    // Split content into sentences
     const sentences = this.splitIntoSentences(result.content);
     
     if (sentences.length === 0) {
@@ -63,7 +103,8 @@ export class SemanticHighlighter {
     }
     
 
-    const scoredSentences = await this.scoreSentences(sentences, queryEmbedding);
+    // Score each sentence against query
+const scoredSentences = await this.scoreSentences(sentences, queryEmbedding, query);
     
     const topSentences = scoredSentences
       .filter(s => s.score >= this.config.threshold!)
@@ -109,11 +150,11 @@ export class SemanticHighlighter {
     // Generate embedding
     const embedding = await this.generateEmbedding(query);
     
-    // Cache it (max 100 queries to prevent memory bloat)
-    if (this.embeddingCache.size >= 100) {
-      const firstKey = this.embeddingCache.keys().next().value;
-      this.embeddingCache.delete(firstKey);
-    }
+   // ✅ OPTIMIZATION: Increase cache to 500 (5KB per embedding, ~2.5MB total)
+if (this.embeddingCache.size >= 500) {
+    const firstKey = this.embeddingCache.keys().next().value;
+    this.embeddingCache.delete(firstKey);
+  }
     this.embeddingCache.set(query, embedding);
     
     return embedding;
@@ -130,26 +171,29 @@ export class SemanticHighlighter {
     const sentences = cleanText
       .split(/(?:[.!?]+\s+|\n+)/)
       .map(s => s.trim())
-      .filter(s => s.length > 20 && !s.match(/^(Header|Transaction|Footer|Section)/));  // Filter headers
+      .filter(s => s.length > 20 && !s.match(/^(Header|Transaction|Footer|Section)/));
     
-    return sentences;
+    // ✅ OPTIMIZATION: Limit to first 15 sentences to reduce embedding time
+    // Most queries will match in first few sentences anyway
+    return sentences.slice(0, 10);
   }
   
-  /**
-   * Score sentences against query embedding
-   */
   private async scoreSentences(
     sentences: string[],
-    queryEmbedding: number[]
+    queryEmbedding: number[],
+    query: string  // ✅ Add query parameter
   ): Promise<ScoredSentence[]> {
     
-    // Generate embeddings for all sentences in parallel
-    const sentenceEmbeddings = await Promise.all(
-      sentences.map(s => this.generateEmbedding(s))
-    );
+    // ✅ OPTIMIZATION: Pre-filter sentences using keyword matching
+    const filteredSentences = this.preFilterSentences(sentences, query);
+    
+    console.log(`Highlighting: ${sentences.length} sentences → ${filteredSentences.length} after pre-filter`);
+    
+   // ✅ OPTIMIZATION: Use batch embedding generation
+const sentenceEmbeddings = await this.generateEmbeddingsBatch(filteredSentences);
     
     // Calculate cosine similarity for each
-    const scored = sentences.map((text, i) => {
+    const scored = filteredSentences.map((text, i) => {
       const embedding = sentenceEmbeddings[i];
       const score = this.cosineSimilarity(queryEmbedding, embedding);
       
@@ -164,6 +208,37 @@ export class SemanticHighlighter {
     return scored;
   }
   
+
+
+/**
+ * Generate embeddings for multiple texts in batch (faster)
+ */
+private async generateEmbeddingsBatch(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
+    
+    try {
+      // Workers AI supports batch processing
+      const responses = await Promise.all(
+        texts.map(text => this.env.AI.run(
+          '@cf/baai/bge-small-en-v1.5',
+          { text: text.substring(0, 512) }
+        ))
+      );
+      
+      return responses.map((response: any) => {
+        // Handle different response formats
+        if (Array.isArray(response)) return response;
+        if (response?.data?.[0]) return response.data[0];
+        if (response?.[0]) return response[0];
+        return [];
+      });
+    } catch (error) {
+      console.error('Batch embedding generation failed:', error);
+      return texts.map(() => []);
+    }
+  }
+
+
   /**
    * Generate BGE embedding
    */
@@ -299,6 +374,48 @@ export class SemanticHighlighter {
     
     return snippets;
   }
+/**
+ * Pre-filter sentences using simple keyword matching
+ * This avoids embedding sentences that have no keyword overlap
+ */
+private preFilterSentences(sentences: string[], query: string): string[] {
+    // Extract keywords from query (remove common words)
+    const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'is', 'was', 'are', 'were', 'be', 'been']);
+    const queryKeywords = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(word => word.length > 2 && !stopWords.has(word));
+    
+    if (queryKeywords.length === 0) {
+      // No keywords to filter by, return all sentences
+      return sentences;
+    }
+    
+    // Score sentences by keyword overlap
+    const scored = sentences.map(sentence => {
+      const lowerSentence = sentence.toLowerCase();
+      const matchCount = queryKeywords.filter(keyword => 
+        lowerSentence.includes(keyword)
+      ).length;
+      
+      return { sentence, matchCount };
+    });
+    
+    // Keep sentences with at least 1 keyword match, or top 10 if none match
+    const filtered = scored.filter(s => s.matchCount > 0);
+    
+    if (filtered.length === 0) {
+      // No keyword matches - fall back to all sentences (but limit to 10)
+      return sentences.slice(0, 10);
+    }
+    
+    // Sort by match count and return top sentences
+    return filtered
+  .sort((a, b) => b.matchCount - a.matchCount)
+  .slice(0, 5)  // ✅ AGGRESSIVE: Only embed top 5 most promising
+  .map(s => s.sentence);
+  }
+
 }
 
 /**

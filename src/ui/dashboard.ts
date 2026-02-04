@@ -245,7 +245,7 @@ h1{font-size:1.5rem}
   <input type="checkbox" id="useHighlighting" checked style="width:auto;margin:0 8px 0 0">
   <span style="display:flex;align-items:center;gap:4px">
     Semantic Highlighting
-    <span style="font-size:11px;color:#64748b">(+150ms)</span>
+    <span style="font-size:11px;color:#64748b">(optional, cached 60s)</span>
   </span>
 </label>
 <div id="highlightControls" style="margin-top:8px;padding:8px;background:#f8fafc;border-radius:4px;display:none">
@@ -645,6 +645,26 @@ highlightingCheckbox.addEventListener('change', (e) => {
 // Threshold slider
 thresholdSlider.addEventListener('input', (e) => {
   thresholdValue.textContent = e.target.value;
+});
+
+// Smart highlighting hint for short queries
+document.getElementById('searchQuery').addEventListener('input', (e) => {
+  const query = e.target.value;
+  const wordCount = query.trim().split(/\s+/).filter(w => w.length > 0).length;
+  const highlightCheckbox = document.getElementById('useHighlighting');
+  const highlightLabel = highlightCheckbox.parentElement;
+  
+  // Suggest highlighting for short queries (1-3 words)
+  if (wordCount > 0 && wordCount <= 3) {
+    highlightLabel.style.background = '#fef3c7';
+    highlightLabel.style.padding = '4px 8px';
+    highlightLabel.style.borderRadius = '4px';
+    highlightLabel.title = '💡 Highlighting works best with short queries';
+  } else {
+    highlightLabel.style.background = '';
+    highlightLabel.style.padding = '';
+    highlightLabel.title = '';
+  }
 });
 
 loadStats();
