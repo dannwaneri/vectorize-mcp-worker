@@ -1,6 +1,7 @@
 import { Env } from '../types/env';
 import { SearchResult } from '../types/search';
 import { HighlightedResult, Highlight, HighlightConfig } from './types';
+import { resolveEmbeddingModel } from '../config/models';
 
 
 export class SemanticHighlighter {
@@ -153,7 +154,7 @@ const scoredSentences = await this.scoreSentences(sentences, queryEmbedding, que
    // ✅ OPTIMIZATION: Increase cache to 500 (5KB per embedding, ~2.5MB total)
 if (this.embeddingCache.size >= 500) {
     const firstKey = this.embeddingCache.keys().next().value;
-    this.embeddingCache.delete(firstKey);
+    if (firstKey !== undefined) this.embeddingCache.delete(firstKey);
   }
     this.embeddingCache.set(query, embedding);
     
@@ -220,7 +221,7 @@ private async generateEmbeddingsBatch(texts: string[]): Promise<number[][]> {
       // Workers AI supports batch processing
       const responses = await Promise.all(
         texts.map(text => this.env.AI.run(
-          '@cf/baai/bge-small-en-v1.5',
+          resolveEmbeddingModel(this.env.EMBEDDING_MODEL).id as any,
           { text: text.substring(0, 512) }
         ))
       );
@@ -245,7 +246,7 @@ private async generateEmbeddingsBatch(texts: string[]): Promise<number[][]> {
   private async generateEmbedding(text: string): Promise<number[]> {
     try {
         const response = await this.env.AI.run(
-            '@cf/baai/bge-small-en-v1.5',
+            resolveEmbeddingModel(this.env.EMBEDDING_MODEL).id as any,
             { text: text.substring(0, 512) }
           );
           

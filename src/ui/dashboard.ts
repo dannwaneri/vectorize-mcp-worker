@@ -5,13 +5,14 @@ export function getDashboardHTML(): string {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vectorize MCP Worker - Dashboard</title>
-<meta name="description" content="Production-Grade Hybrid RAG with Multimodal Support on Cloudflare Edge">
+<meta name="description" content="Hybrid RAG with Metadata Filtering, Multimodal Vision, and Intelligent Routing on Cloudflare Edge">
+<link rel="icon" href="data:,">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Vectorize MCP Worker",
-  "description": "Production-Grade Hybrid RAG with Multimodal Image Processing",
+  "description": "Hybrid RAG with Metadata Filtering, Multimodal Vision, and Intelligent Routing on Cloudflare Edge",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Cloudflare Workers",
   "offers": {
@@ -106,13 +107,25 @@ button:disabled{background:#ccc;cursor:not-allowed}
 .search-row button{width:auto;padding:12px 24px;flex-shrink:0}
 .demo-card{background:#f0f9ff;border:1px solid #0ea5e9;border-left:3px solid #0ea5e9}
 .demo-card button{margin-top:8px}
-.demo-card button:first-of-type{margin-top:0;background:#0ea5e9}
-.demo-card button:first-of-type:hover{background:#0284c7}
-.demo-card button:last-of-type{background:#059669}
-.demo-card button:last-of-type:hover{background:#047857}
+.demo-card button:nth-of-type(1){margin-top:0;background:#0ea5e9}
+.demo-card button:nth-of-type(1):hover{background:#0284c7}
+.demo-card button:nth-of-type(2){background:#4f46e5}
+.demo-card button:nth-of-type(2):hover{background:#4338ca}
+.demo-card button:nth-of-type(3){background:#059669}
+.demo-card button:nth-of-type(3):hover{background:#047857}
 .demo-card p{font-size:0.85rem;color:#555;margin-bottom:12px;line-height:1.4}
 .footer{text-align:center;margin-top:24px;padding:16px;color:#888;font-size:0.8rem}
 .footer a{color:#4f46e5;text-decoration:none}
+.filter-toggle{background:none;color:#4f46e5;border:1px solid #4f46e5;padding:6px 14px;font-size:0.8rem;font-weight:600;width:auto;border-radius:6px;cursor:pointer;margin-top:10px;transition:all 0.2s}
+.filter-toggle:hover{background:#4f46e5;color:#fff}
+.filter-panel{margin-top:10px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;display:none}
+.filter-panel.open{display:block}
+.filter-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.filter-group{display:flex;flex-direction:column;gap:4px}
+.filter-group label{font-size:0.75rem;color:#64748b;font-weight:600;margin-bottom:0}
+.filter-group input,.filter-group select{font-size:0.8rem;padding:8px 10px;margin-bottom:0}
+.filter-date-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.filter-active-badge{display:inline-block;background:#4f46e5;color:#fff;font-size:0.65rem;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle}
 @media screen and (max-width:1024px){
 .grid{grid-template-columns:repeat(2,1fr)!important}
 .card.search-card{grid-column:span 2!important}
@@ -136,9 +149,9 @@ h1{font-size:1.5rem}
 <a href="https://github.com/dannwaneri/vectorize-mcp-worker" target="_blank">⭐ Star on GitHub - Help spread the word!</a>
 <button onclick="document.getElementById('ghBanner').style.display='none'">✕</button>
 </div>
-<h1>Vectorize MCP Worker V3</h1>
-<p class="subtitle">Hybrid RAG with Vision: Search text and images with AI-powered understanding.</p>
-<p class="tagline">~900ms search • Vector + BM25 • Multimodal • OCR • Reranked results • $5/month</p>
+<h1>Vectorize MCP Worker</h1>
+<p class="subtitle">Hybrid RAG with Metadata Filtering + Multimodal Vision</p>
+<p class="tagline">~400ms edge search • Hybrid (Vector + BM25) • Metadata Filters • Vision + OCR • TopK=50 • Reranked • $5/month</p>
 
 <div class="auth-section">
 <label>🔑 API Key (required for protected endpoints)</label>
@@ -147,15 +160,19 @@ h1{font-size:1.5rem}
 <button onclick="testAuth()">Test</button>
 </div>
 <div id="authStatus" class="log" style="display:none"></div>
+<div id="tenantBadge" style="display:none;margin-top:8px;padding:6px 12px;background:#ede9fe;border-radius:6px;font-size:0.8rem">
+  <strong>Tenant:</strong> <span id="tenantName" style="font-family:monospace;color:#5b21b6"></span>
+  <span id="adminBadge" style="display:none;background:#4f46e5;color:#fff;padding:1px 6px;border-radius:4px;font-size:0.7rem;margin-left:6px">ADMIN</span>
+</div>
 </div>
 
 <!-- V4 Mode Toggle Section -->
 <div class="v4-section" style="margin-bottom:16px;padding:16px;background:#f0f9ff;border:1px solid #0ea5e9;border-radius:12px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-    <h3 style="margin:0;color:#0369a1;font-size:1rem">🚀 V4 Intelligent Routing</h3>
+    <h3 style="margin:0;color:#0369a1;font-size:1rem">🚀 Intelligent Routing (V4)</h3>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
       <input type="checkbox" id="useV4Mode" style="width:auto;margin:0">
-      <span style="font-weight:600;color:#0369a1">Enable V4</span>
+      <span style="font-weight:600;color:#0369a1">Enable</span>
     </label>
   </div>
   
@@ -178,9 +195,62 @@ h1{font-size:1.5rem}
   </div>
 </div>
 
+<!-- Models Info Panel -->
+<div id="modelsPanel" style="margin-bottom:16px;padding:16px;background:#fafafa;border:1px solid #e5e5e5;border-radius:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0">
+    <h3 style="margin:0;color:#1a1a1a;font-size:1rem">&#129302; AI Models</h3>
+    <button onclick="toggleModelsPanel()" id="modelsPanelToggle" style="background:none;color:#4f46e5;border:1px solid #4f46e5;padding:4px 12px;font-size:0.75rem;font-weight:600;width:auto;border-radius:6px;cursor:pointer">&#9660; Details</button>
+  </div>
+  <div id="modelsPanelBody" style="display:none;margin-top:12px">
+    <div id="activeModelBanner" style="padding:8px 12px;background:#ede9fe;border-radius:6px;font-size:0.8rem;margin-bottom:12px">
+      Loading active model...
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+      <thead>
+        <tr style="background:#f5f5f5">
+          <th style="padding:6px 10px;text-align:left;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Key</th>
+          <th style="padding:6px 10px;text-align:left;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Model</th>
+          <th style="padding:6px 10px;text-align:left;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Dims</th>
+          <th style="padding:6px 10px;text-align:left;font-weight:600;color:#555;border-bottom:1px solid #e5e5e5">Note</th>
+        </tr>
+      </thead>
+      <tbody id="embeddingModelRows">
+        <tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;font-family:monospace">bge-small</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;font-family:monospace;font-size:0.72rem">@cf/baai/bge-small-en-v1.5</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0">384</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;color:#555">Default. Fast, backward-compatible.</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;font-family:monospace">bge-m3</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;font-family:monospace;font-size:0.72rem">@cf/baai/bge-m3</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0">1024</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;color:#555">Multilingual. Needs 1024d index.</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 10px;font-family:monospace">qwen3-0.6b</td>
+          <td style="padding:6px 10px;font-family:monospace;font-size:0.72rem">@cf/qwen/qwen3-embedding-0.6b</td>
+          <td style="padding:6px 10px">1024</td>
+          <td style="padding:6px 10px;color:#4f46e5;font-weight:600">&#9733; Best 2026. Needs 1024d index.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:10px;padding:8px 12px;background:#fff8e1;border-left:3px solid #f59e0b;border-radius:4px;font-size:0.75rem;color:#555;line-height:1.5">
+      <strong>To switch model:</strong> create a new 1024d Vectorize index, update
+      <code style="background:#f5f5f5;padding:1px 4px;border-radius:3px">wrangler.toml</code> with
+      <code style="background:#f5f5f5;padding:1px 4px;border-radius:3px">EMBEDDING_MODEL = "qwen3-0.6b"</code>
+      under <code style="background:#f5f5f5;padding:1px 4px;border-radius:3px">[vars]</code>, then re-ingest all documents.
+    </div>
+  </div>
+</div>
+
 <div class="grid">
 <div class="card">
 <h2><span>📊</span> Stats</h2>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+<span style="font-size:0.7rem;color:#059669;font-weight:600">● Live on Cloudflare Edge</span>
+<span style="font-size:0.65rem;color:#4f46e5;font-weight:600">&#128269; Metadata filtering enabled</span>
+</div>
 <div class="stats-grid">
 <div class="stat"><div class="stat-value" id="vectorCount">-</div><div class="stat-label">Vectors</div></div>
 <div class="stat"><div class="stat-value" id="docCount">-</div><div class="stat-label">Documents</div></div>
@@ -188,6 +258,38 @@ h1{font-size:1.5rem}
 </div>
 <button onclick="loadStats()">Refresh Stats</button>
 </div>
+
+<details id="analyticsSection" style="margin-bottom:16px">
+<summary style="cursor:pointer;padding:12px 16px;background:#f9fafb;border:1px solid #e5e5e5;border-radius:8px;font-weight:600;font-size:0.9rem;list-style:none;display:flex;align-items:center;gap:8px">
+  <span>📊</span> Query Analytics
+  <span id="analyticsQueryCount" style="margin-left:auto;font-size:0.75rem;color:#6b7280;font-weight:400">—</span>
+</summary>
+<div style="border:1px solid #e5e5e5;border-top:none;border-radius:0 0 8px 8px;padding:16px;background:#fff">
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px" id="analyticsStats">
+    <div style="text-align:center;padding:10px;background:#f3f4f6;border-radius:6px">
+      <div style="font-size:1.4rem;font-weight:700;color:#1f2937" id="analyticsAvgLatency">—</div>
+      <div style="font-size:0.7rem;color:#6b7280;margin-top:2px">Avg latency (ms)</div>
+    </div>
+    <div style="text-align:center;padding:10px;background:#f3f4f6;border-radius:6px">
+      <div style="font-size:1.4rem;font-weight:700;color:#059669" id="analyticsCacheRate">—</div>
+      <div style="font-size:0.7rem;color:#6b7280;margin-top:2px">Cache hit rate</div>
+    </div>
+    <div style="text-align:center;padding:10px;background:#f3f4f6;border-radius:6px">
+      <div style="font-size:1.4rem;font-weight:700;color:#4f46e5" id="analyticsTotalQueries">—</div>
+      <div style="font-size:0.7rem;color:#6b7280;margin-top:2px">Total queries</div>
+    </div>
+  </div>
+  <div id="analyticsTopFilters" style="display:none;margin-bottom:14px">
+    <div style="font-size:0.75rem;font-weight:600;color:#374151;margin-bottom:6px">Top filters used</div>
+    <div id="analyticsTopFiltersList" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+  </div>
+  <div>
+    <div style="font-size:0.75rem;font-weight:600;color:#374151;margin-bottom:8px">Recent queries (last 10)</div>
+    <div id="analyticsRecentQueries" style="font-size:0.78rem;color:#6b7280">No queries yet — run a search to see analytics.</div>
+  </div>
+  <button onclick="loadStats()" style="margin-top:12px;font-size:0.75rem;padding:4px 10px">Refresh</button>
+</div>
+</details>
 
 <div class="card">
 <h2><span>📥</span> Ingest Document</h2>
@@ -202,7 +304,7 @@ h1{font-size:1.5rem}
 </div>
 
 <div class="card">
-<h2><span>📸</span> Ingest Image <span style="font-size:0.7rem;background:#f97316;color:#fff;padding:2px 6px;border-radius:4px;font-weight:600">NEW</span></h2>
+<h2><span>📸</span> Ingest Image</h2>
 <label>Image ID</label>
 <input type="text" id="imageId" placeholder="receipt-001">
 <label>Category (optional)</label>
@@ -222,10 +324,11 @@ h1{font-size:1.5rem}
 </div>
 
 <div class="card demo-card">
-<h2><span>🎯</span> Try V3 Features</h2>
-<p>Test multimodal search with pre-loaded sample images</p>
-<button onclick="searchImages()">🖼️ Search: "dashboard navigation"</button>
-<button onclick="searchFinancial()">💳 Search: "Access Bank transaction"</button>
+<h2><span>🎯</span> Try Advanced Features</h2>
+<p>Explore hybrid retrieval, metadata filtering, and multimodal results with one click</p>
+<button onclick="searchImages()">🖼️ Multimodal: "dashboard navigation"</button>
+<button onclick="searchFiltered()">🔍 Filtered: source_type = image</button>
+<button onclick="searchFinancial()">💳 OCR: "Access Bank transaction"</button>
 <div id="demoLog" class="log" style="display:none"></div>
 </div>
 
@@ -237,8 +340,10 @@ h1{font-size:1.5rem}
 <option value="3">Top 3</option>
 <option value="5" selected>Top 5</option>
 <option value="10">Top 10</option>
+<option value="25">Top 25</option>
+<option value="50">Top 50</option>
 </select>
-<button onclick="search()">🔍 Search</button>
+<button id="searchBtn" onclick="search()">🔍 Search</button>
 </div>
 <label><input type="checkbox" id="useRerank" checked> Use Reranker (more accurate)</label>
 <label class="checkbox-label" style="margin-top:8px">
@@ -264,6 +369,57 @@ h1{font-size:1.5rem}
   <div style="font-size:11px;color:#64748b;margin-top:4px">
     Lower = more highlights, Higher = fewer but more relevant
   </div>
+</div>
+<button type="button" class="filter-toggle" id="filterToggleBtn" onclick="toggleFilters()">&#9660; Filters</button>
+<div class="filter-panel" id="filterPanel">
+<div class="filter-grid">
+<div class="filter-group">
+<label>Source Type</label>
+<select id="f_source_type">
+<option value="">(any)</option>
+<option value="text">text</option>
+<option value="pdf">pdf</option>
+<option value="image">image</option>
+<option value="audio">audio</option>
+<option value="video">video</option>
+</select>
+</div>
+<div class="filter-group">
+<label>Category</label>
+<input type="text" id="f_category" placeholder="e.g. finance">
+</div>
+<div class="filter-group">
+<label>Tags (comma-separated)</label>
+<input type="text" id="f_tags" placeholder="e.g. finance,q1">
+</div>
+<div class="filter-group">
+<label>Tenant ID</label>
+<input type="text" id="f_tenant_id" placeholder="e.g. acme">
+</div>
+<div class="filter-group">
+<label>MIME Type</label>
+<select id="f_mime_type">
+<option value="">(any)</option>
+<option value="text/plain">text/plain</option>
+<option value="application/pdf">application/pdf</option>
+<option value="image/png">image/png</option>
+<option value="image/jpeg">image/jpeg</option>
+<option value="image/webp">image/webp</option>
+</select>
+</div>
+<div class="filter-group">
+<label>File Name</label>
+<input type="text" id="f_file_name" placeholder="e.g. report.pdf">
+</div>
+<div class="filter-group" style="grid-column:span 2">
+<label>Date Created — From / To</label>
+<div class="filter-date-row">
+<input type="date" id="f_date_from" title="date_created \u2265 this date">
+<input type="date" id="f_date_to" title="date_created \u2264 this date">
+</div>
+</div>
+</div>
+<button type="button" onclick="clearFilters()" style="width:auto;background:#64748b;font-size:0.8rem;padding:6px 14px;margin-top:10px">Clear Filters</button>
 </div>
 <div id="searchResults" class="results"></div>
 <div id="searchPerf" class="perf" style="display:none">
@@ -341,11 +497,31 @@ const el = document.getElementById('authStatus');
 el.style.display = 'block';
 el.innerHTML = 'Testing...';
 try {
-const r = await fetch(API_BASE + '/test');
+const r = await fetch(API_BASE + '/test', {headers: getHeaders()});
 const d = await r.json();
 const apiKey = document.getElementById('apiKey').value;
 const authStatus = apiKey ? '<span class="success">✓ Authenticated</span>' : '<span style="color:#fbbf24">⚡ Server Online</span> (enter API key to access protected endpoints)';
 el.innerHTML = authStatus + ' | Mode: ' + d.mode + ' | Database: ' + (d.bindings.hasD1?'✓':'✗');
+
+// Show tenant context badge
+const badge = document.getElementById('tenantBadge');
+const tenantName = document.getElementById('tenantName');
+const adminBadge = document.getElementById('adminBadge');
+if (d.multiTenancy && d.multiTenancy.enabled) {
+  badge.style.display = 'block';
+  if (d.multiTenancy.isAdmin) {
+    tenantName.textContent = 'All tenants';
+    adminBadge.style.display = 'inline';
+  } else {
+    tenantName.textContent = d.multiTenancy.tenant || '(unknown)';
+    adminBadge.style.display = 'none';
+    // Auto-lock tenant_id filter in search
+    const tf = document.getElementById('f_tenant_id');
+    if (tf) { tf.value = d.multiTenancy.tenant || ''; tf.setAttribute('readonly', 'true'); tf.title = 'Locked to your tenant'; }
+  }
+} else {
+  badge.style.display = 'none';
+}
 } catch(e) { el.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; }
 }
 
@@ -353,10 +529,77 @@ async function loadStats(){
 try {
 const r = await fetch(API_BASE + '/stats', {headers: getHeaders()});
 const d = await r.json();
-document.getElementById('vectorCount').textContent = d.index?.vectorCount || 0;
+document.getElementById('vectorCount').textContent = d.index?.vectorsCount ?? d.index?.vectorCount ?? 0;
 document.getElementById('docCount').textContent = d.documents?.total_documents || 0;
 document.getElementById('dimensions').textContent = d.dimensions || 384;
+const banner = document.getElementById('activeModelBanner');
+if (banner && d.models) {
+  const key = d.models.embeddingKey || 'bge-small';
+  const modelId = d.models.embedding || '@cf/baai/bge-small-en-v1.5';
+  const dims = d.models.embeddingDimensions || d.dimensions || 384;
+  const isBest = key === 'qwen3-0.6b';
+  banner.innerHTML = '<strong>Active embedding model:</strong> <code style="background:#ddd6fe;padding:1px 4px;border-radius:3px">' + key + '</code> &nbsp;→&nbsp; <span style="font-family:monospace;font-size:0.75rem;color:#5b21b6">' + modelId + '</span> &nbsp;<span style="color:#6b7280">(' + dims + 'd)</span>' + (isBest ? ' &nbsp;<span style="color:#4f46e5;font-weight:700">★ Best 2026</span>' : '');
+}
+
+// Populate Analytics section
+const a = d.analytics;
+if (a) {
+  const totalQ = a.totalQueries || 0;
+  document.getElementById('analyticsQueryCount').textContent = totalQ + ' queries';
+  document.getElementById('analyticsAvgLatency').textContent = a.avgLatencyMs || '0';
+  document.getElementById('analyticsCacheRate').textContent = a.cacheHitRate || '0%';
+  document.getElementById('analyticsTotalQueries').textContent = totalQ;
+
+  // Top filters
+  if (a.topFilters && a.topFilters.length > 0) {
+    const filtersDiv = document.getElementById('analyticsTopFilters');
+    filtersDiv.style.display = 'block';
+    document.getElementById('analyticsTopFiltersList').innerHTML = a.topFilters.map(f =>
+      '<span style="background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:12px;font-size:0.72rem">' + f.field + ' <strong>(' + f.count + ')</strong></span>'
+    ).join('');
+  }
+
+  // Recent queries table
+  const rqEl = document.getElementById('analyticsRecentQueries');
+  if (a.recentQueries && a.recentQueries.length > 0) {
+    rqEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:0.75rem">' +
+      '<thead><tr style="border-bottom:1px solid #e5e5e5;color:#9ca3af">' +
+      '<th style="text-align:left;padding:4px 6px;font-weight:600">Query</th>' +
+      '<th style="text-align:right;padding:4px 6px;font-weight:600">Total</th>' +
+      '<th style="text-align:right;padding:4px 6px;font-weight:600">Embed</th>' +
+      '<th style="text-align:right;padding:4px 6px;font-weight:600">Vector</th>' +
+      '<th style="text-align:right;padding:4px 6px;font-weight:600">BM25</th>' +
+      '<th style="text-align:center;padding:4px 6px;font-weight:600">Cache</th>' +
+      '</tr></thead><tbody>' +
+      a.recentQueries.map((q, i) => {
+        const bg = i % 2 === 0 ? '#f9fafb' : '#fff';
+        const cachedBadge = q.cached
+          ? '<span style="background:#d1fae5;color:#065f46;padding:1px 5px;border-radius:8px">hit</span>'
+          : '<span style="background:#f3f4f6;color:#6b7280;padding:1px 5px;border-radius:8px">miss</span>';
+        return '<tr style="background:' + bg + '">' +
+          '<td style="padding:4px 6px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + q.query + '</td>' +
+          '<td style="text-align:right;padding:4px 6px;color:#1f2937;font-weight:600">' + q.totalMs + 'ms</td>' +
+          '<td style="text-align:right;padding:4px 6px;color:#6b7280">' + (q.embeddingMs || '—') + (q.embeddingMs ? 'ms' : '') + '</td>' +
+          '<td style="text-align:right;padding:4px 6px;color:#6b7280">' + (q.vectorMs || '—') + (q.vectorMs ? 'ms' : '') + '</td>' +
+          '<td style="text-align:right;padding:4px 6px;color:#6b7280">' + (q.keywordMs || '—') + (q.keywordMs ? 'ms' : '') + '</td>' +
+          '<td style="text-align:center;padding:4px 6px">' + cachedBadge + '</td>' +
+          '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  } else {
+    document.getElementById('analyticsRecentQueries').textContent = 'No queries yet — run a search to see analytics.';
+  }
+}
 } catch(e) { console.error(e); }
+}
+
+function toggleModelsPanel() {
+  const body = document.getElementById('modelsPanelBody');
+  const btn = document.getElementById('modelsPanelToggle');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  btn.innerHTML = isOpen ? '&#9660; Details' : '&#9650; Hide';
+  if (!isOpen) { loadStats(); }
 }
 
 async function ingestDoc(){
@@ -374,7 +617,7 @@ body: JSON.stringify({id, content, category: category || undefined})
 });
 const d = await r.json();
 if(d.success) {
-log.innerHTML = '<span class="success">✓ Ingested!</span> Chunks: ' + d.chunksCreated + ' | Time: ' + d.performance.totalTime;
+log.innerHTML = '<span class="success">✓ Ingested!</span> Chunks: ' + (d.chunks ?? d.chunksCreated ?? '?') + ' | Time: ' + d.performance.totalTime;
 document.getElementById('docId').value = '';
 document.getElementById('docContent').value = '';
 loadStats();
@@ -434,33 +677,94 @@ document.getElementById('useV4Mode').addEventListener('change', (e) => {
   v4Info.style.display = e.target.checked ? 'block' : 'none';
 });
 
+function toggleFilters() {
+  const panel = document.getElementById('filterPanel');
+  const btn = document.getElementById('filterToggleBtn');
+  const open = panel.classList.toggle('open');
+  btn.innerHTML = (open ? '&#9650;' : '&#9660;') + ' Filters' + (open ? '' : countActiveFilters() > 0 ? ' <span class="filter-active-badge">' + countActiveFilters() + '</span>' : '');
+}
+
+function countActiveFilters() {
+  const ids = ['f_source_type','f_category','f_tags','f_tenant_id','f_mime_type','f_file_name','f_date_from','f_date_to'];
+  return ids.filter(id => document.getElementById(id).value.trim() !== '').length;
+}
+
+function clearFilters() {
+  ['f_source_type','f_mime_type'].forEach(id => { document.getElementById(id).value = ''; });
+  ['f_category','f_tags','f_tenant_id','f_file_name','f_date_from','f_date_to'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('filterToggleBtn').innerHTML = '&#9650; Filters';
+}
+
+function buildFilters() {
+  const filters = {};
+  const sourceType = document.getElementById('f_source_type').value.trim();
+  if (sourceType) filters.source_type = { $eq: sourceType };
+  const category = document.getElementById('f_category').value.trim();
+  if (category) filters.category = { $eq: category };
+  const tagsRaw = document.getElementById('f_tags').value.trim();
+  if (tagsRaw) {
+    const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+    if (tags.length > 0) filters.tags = { $in: tags };
+  }
+  const tenantId = document.getElementById('f_tenant_id').value.trim();
+  if (tenantId) filters.tenant_id = { $eq: tenantId };
+  const mimeType = document.getElementById('f_mime_type').value.trim();
+  if (mimeType) filters.mime_type = { $eq: mimeType };
+  const fileName = document.getElementById('f_file_name').value.trim();
+  if (fileName) filters.file_name = { $eq: fileName };
+  const dateFrom = document.getElementById('f_date_from').value;
+  const dateTo = document.getElementById('f_date_to').value;
+  if (dateFrom || dateTo) {
+    filters.date_created = {};
+    if (dateFrom) filters.date_created.$gte = dateFrom + 'T00:00:00.000Z';
+    if (dateTo) filters.date_created.$lte = dateTo + 'T23:59:59.999Z';
+  }
+  return Object.keys(filters).length > 0 ? filters : undefined;
+}
+
 async function search(){
 const res = document.getElementById('searchResults');
 const perf = document.getElementById('searchPerf');
-res.innerHTML = 'Searching...';
+const btn = document.getElementById('searchBtn');
 
 const query = document.getElementById('searchQuery').value;
 if(!query) { res.innerHTML = '<span class="error">Enter a query</span>'; return; }
 
+res.innerHTML = '<span style="color:#6b7280">Searching...</span>';
+if (btn) { btn.disabled = true; btn.textContent = '⏳ Searching...'; }
+
 const useV4 = document.getElementById('useV4Mode').checked;
 const useHighlighting = document.getElementById('useHighlighting').checked;
-const highlightParam = useHighlighting ? '&highlight=true' : '&highlight=false';
-const searchUrl = useV4 ? API_BASE + '/search?mode=v4' + highlightParam : API_BASE + '/search' + highlightParam;
+const highlightParam = useHighlighting ? 'highlight=true' : 'highlight=false';
+const searchUrl = useV4 ? API_BASE + '/search?mode=v4&' + highlightParam : API_BASE + '/search?' + highlightParam;
 
+const activeFilters = buildFilters();
 try {
 const r = await fetch(searchUrl, {
-method: 'POST', 
+method: 'POST',
 headers: getHeaders(),
 body: JSON.stringify({
 query,
 topK: parseInt(document.getElementById('topK').value),
 rerank: document.getElementById('useRerank').checked,
-highlight: useHighlighting
+highlight: useHighlighting,
+...(activeFilters !== undefined ? { filters: activeFilters } : {})
 })
 });
 
+const xCache = r.headers.get('X-Cache');
+const rlRemaining = r.headers.get('X-RateLimit-Remaining');
+const rlLimit = r.headers.get('X-RateLimit-Limit');
+const rlWindow = r.headers.get('X-RateLimit-Window');
+
 const d = await r.json();
-if(d.error) { res.innerHTML = '<span class="error">' + d.error + '</span>'; return; }
+
+if(r.status === 429) {
+  res.innerHTML = '<span class="error">⏱ Rate limit exceeded — try again in ' + (d.retryAfter || '?') + 's &nbsp;(limit: ' + (d.limit || '?') + ' req/' + (d.window || '?') + ')</span>';
+  if (btn) { btn.disabled = false; btn.textContent = '🔍 Search'; }
+  return;
+}
+if(d.error) { res.innerHTML = '<span class="error">✗ ' + d.error + '</span>'; if (btn) { btn.disabled = false; btn.textContent = '🔍 Search'; } return; }
 
 // Helper function to escape HTML
 function escapeHtml(text) {
@@ -531,30 +835,84 @@ perf.style.display = 'block';
 
 const perfEntries = Object.entries(d.performance);
 const hasHighlighting = perfEntries.some(([key]) => key.toLowerCase().includes('highlight'));
+const isCached = d.performance.totalTime === '0ms (cached)';
+const isCfCache = xCache === 'HIT';
 
-let perfHTML = \`<div class="perf-title">⚡ Performance\${hasHighlighting ? ' <span style="color:#3b82f6;font-size:11px">(with highlighting)</span>' : ''}</div><div class="perf-grid">\`;
+// Rate limit quota badge (right-aligned)
+const rlBadge = (rlRemaining !== null && rlLimit)
+  ? '<span style="margin-left:auto;font-size:0.68rem;color:#9ca3af;font-weight:400">' + rlRemaining + '/' + rlLimit + ' req remaining (' + (rlWindow || '') + ')</span>'
+  : '';
 
+const cacheBadge = isCfCache
+  ? ' <span style="background:#dbeafe;color:#1e40af;font-size:0.7rem;padding:1px 6px;border-radius:8px;margin-left:6px">☁️ CF cache hit</span>'
+  : isCached
+    ? ' <span style="background:#d1fae5;color:#065f46;font-size:0.7rem;padding:1px 6px;border-radius:8px;margin-left:6px">⚡ memory cache hit</span>'
+    : '';
+
+let perfHTML = \`<div class="perf-title" style="display:flex;align-items:center;gap:0">⚡ Performance\${hasHighlighting ? ' <span style="color:#3b82f6;font-size:11px;margin-left:6px">(with highlighting)</span>' : ''}\${cacheBadge}\${rlBadge}</div>\`;
+
+// Visual latency breakdown bars (only for non-cached results)
+if (!isCached) {
+  const parseMs = v => v ? parseInt(v) || 0 : 0;
+  const segments = [
+    { label: 'Embedding', ms: parseMs(d.performance.embeddingTime), color: '#818cf8' },
+    { label: 'Vector', ms: parseMs(d.performance.vectorSearchTime), color: '#34d399' },
+    { label: 'BM25', ms: parseMs(d.performance.keywordSearchTime), color: '#fbbf24' },
+    { label: 'Reranker', ms: parseMs(d.performance.rerankerTime), color: '#f87171' },
+    { label: 'Highlight', ms: parseMs(d.performance.highlightingTime), color: '#60a5fa' },
+  ].filter(s => s.ms > 0);
+  const totalMs = parseMs(d.performance.totalTime) || segments.reduce((s, x) => s + x.ms, 0) || 1;
+  if (segments.length > 0) {
+    const bar = segments.map(s => {
+      const pct = Math.max(2, Math.round((s.ms / totalMs) * 100));
+      return '<div title="' + s.label + ': ' + s.ms + 'ms" style="flex:' + pct + ';background:' + s.color + ';height:10px;border-radius:2px;min-width:3px"></div>';
+    }).join('');
+    const legend = segments.map(s =>
+      '<span style="font-size:0.68rem;color:#6b7280"><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:' + s.color + ';margin-right:3px;vertical-align:middle"></span>' + s.label + ' ' + s.ms + 'ms</span>'
+    ).join('');
+    perfHTML += '<div style="margin-bottom:8px"><div style="display:flex;gap:2px;border-radius:4px;overflow:hidden;margin-bottom:5px">' + bar + '</div><div style="display:flex;flex-wrap:wrap;gap:8px">' + legend + '</div></div>';
+  }
+}
+
+perfHTML += '<div class="perf-grid">';
 perfHTML += perfEntries.map(([k,v]) => {
   const isHighlightMetric = k.toLowerCase().includes('highlight');
   const style = isHighlightMetric ? 'color:#3b82f6;font-weight:600;' : '';
   return '<div class="perf-item" style="' + style + '">' + k + ': <span>' + v + '</span></div>';
 }).join('');
-
 perfHTML += '</div>';
 
 // Add V4 metadata if present
 if (d.metadata) {
 perfHTML += \`<div class="perf-item" style="grid-column:span 2;margin-top:8px;padding-top:8px;border-top:1px solid #e5e5e5">
-<strong>Route:</strong> \${d.metadata.route} | 
+<strong>Route:</strong> \${d.metadata.route} |
 <strong>Intent:</strong> \${d.metadata.intent}
 \${d.metadata.reasoning ? '<br><em>' + d.metadata.reasoning + '</em>' : ''}
 </div>\`;
 }
 
+// Show active filters if any were applied
+const appliedFilters = d.filtersApplied || d.metadata?.filtersApplied;
+if (appliedFilters && Object.keys(appliedFilters).length > 0) {
+  const filterSummary = Object.entries(appliedFilters).map(([k, v]) => {
+    const op = Object.keys(v)[0];
+    const val = v[op];
+    return \`<strong>\${k}</strong> \${op} \${Array.isArray(val) ? '[' + val.join(', ') + ']' : val}\`;
+  }).join(' &amp; ');
+  perfHTML += \`<div class="perf-item" style="grid-column:span 2;margin-top:6px;padding:6px 8px;background:#ede9fe;border-radius:4px;font-size:0.75rem">
+    <strong>Filters applied:</strong> \${filterSummary}
+  </div>\`;
+  // Update toggle button badge
+  const n = Object.keys(appliedFilters).length;
+  document.getElementById('filterToggleBtn').innerHTML = '&#9650; Filters <span class="filter-active-badge">' + n + '</span>';
+}
+
 perf.innerHTML = perfHTML;
 
-} catch(e) { 
-res.innerHTML = '<span class="error">✗ ' + e.message + '</span>'; 
+} catch(e) {
+res.innerHTML = '<span class="error">✗ ' + e.message + '</span>';
+} finally {
+  if (btn) { btn.disabled = false; btn.textContent = '🔍 Search'; }
 }
 }
 
@@ -616,6 +974,18 @@ await search();
 const demoLog = document.getElementById('demoLog');
 demoLog.style.display = 'block';
 demoLog.innerHTML = '<span class="success">✓ Search complete!</span> Notice the 📸 IMAGE badges on results showing screenshots.';
+}
+
+async function searchFiltered(){
+document.getElementById('searchQuery').value = 'document';
+// Pre-fill the filter panel and open it
+document.getElementById('f_source_type').value = 'image';
+const panel = document.getElementById('filterPanel');
+if (!panel.classList.contains('open')) toggleFilters();
+await search();
+const demoLog = document.getElementById('demoLog');
+demoLog.style.display = 'block';
+demoLog.innerHTML = '<span class="success">✓ Filtered search complete!</span> Results scoped to source_type = image using Vectorize metadata index.';
 }
 
 async function searchFinancial(){

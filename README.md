@@ -1,154 +1,110 @@
-# Vectorize MCP Worker 🚀
+# Vectorize MCP Worker
 
-**Production-Grade Hybrid RAG with Intelligent Routing - Deploy for $0.10/month instead of $200+**
+**Production-grade RAG on Cloudflare Workers. ~$5/month. No servers. No Pinecone bill.**
 
-A complete semantic search system with hybrid search (Vector + BM25), reranking, auto-chunking, one-time licensing, and MCP integration.
+Hybrid search, knowledge reflection, multimodal ingestion, metadata filtering, multi-tenancy, rate limiting, and a native MCP server — all in one deployable Worker.
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/dannwaneri/vectorize-mcp-worker)
 
+---
+
 ## Why This Exists
 
-Traditional AI search setups are expensive and slow:
-- 💸 **Cost**: $50-200+/month for Pinecone, Weaviate, or hosted solutions
-- 🐌 **Latency**: 200-500ms response times from centralized servers
-- 🔒 **Privacy**: Your data gets sent to third-party services
+Andrej Karpathy made a compelling argument recently: LLMs are becoming the new Wikipedia. Ask the model, get the answer. For general knowledge questions, he's right — if you're asking "what is gradient descent," you don't need a retrieval pipeline.
 
-This worker changes the game:
-- 💰 **Cost**: ~$0.10-$5/month with V4 intelligent routing (71% cheaper than V3)
-- ⚡ **Speed**: <1s hybrid search with reranking
-- 🔐 **Privacy**: Your data stays on your Cloudflare account
+But that framing has a blind spot:
 
-## What's New in V4 🚀
+**Your data isn't in any LLM's training set. It never will be.**
 
-**Intelligent Query Routing** - Not all queries need expensive vector search:
+Your internal docs, customer contracts, support tickets, financial reports, product changelog — none of it lives in any model. The moment you need answers grounded in *your* specific knowledge base, you need retrieval. The moment you need results that are cited, up-to-date, and not hallucinated, you need RAG.
 
-- **SQL Route** (11ms): Entity lookups → 98.6% faster than V3
-- **BM25 Route** (18ms): Keyword exact → 98% faster  
-- **VECTOR Route** (706ms): Semantic search → Same as V3
-- **GRAPH Route** (11ms): Relationships → 98.8% faster
+This project is for that use case. It's not trying to beat LLMs at general knowledge. It's making them useful on *your* data.
 
-**Results:**
-- 71% cost reduction ($0.39/month → $0.11/month for 1K queries/day)
-- 70% average latency improvement
-- Zero breaking changes (V3 still works with default mode)
+The second reason this exists: most RAG tutorials hand you a 50-line Python script that calls OpenAI and Pinecone and calls it a day. That's fine for a weekend demo. It falls apart the moment you need multi-tenancy, metadata filtering, sub-second cached responses, a proper MCP server, and something you'd actually trust in production. This is what happens when you build the thing properly from the start.
 
-## How We Compare to Pinecone
+---
 
-| Feature | Pinecone | This Project |
-|---------|----------|--------------|
-| **Monthly Cost** | $50+ minimum | ~$0.10-$5/month (V4 routing) |
-| **Edge Deployment** | ❌ Cloud-only | ✅ Cloudflare Edge (210% faster than Lambda@Edge) |
-| **Intelligent Routing** | ❌ One-size-fits-all | ✅ 6 specialized routes (SQL/BM25/VECTOR/GRAPH/OCR/VISION) |
-| **Hybrid Search** | Requires workarounds | ✅ Native Vector + BM25 |
-| **Cross-Encoder Reranking** | Basic | ✅ bge-reranker-base (+9.3% MRR improvement) |
-| **MCP Integration** | ❌ None | ✅ Native (4,400+ MCP tools compatible) |
-| **Licensing** | Recurring SaaS | ✅ One-time option available |
-| **Vendor Lock-in** | High (proprietary) | Low (open source) |
+## Key Features
 
-> *"Pinecone is struggling with customer churn largely driven by cost concerns"* — VentureBeat
+**Hybrid Search** — Vector similarity + BM25 keyword search, fused with Reciprocal Rank Fusion. Pure vector search misses exact matches. Pure keyword search misses synonyms. You need both.
 
-**Cost at scale:** V4 routing cuts costs 71% vs V3 (same workload). Pinecone costs **50-100x more** at 60-80M+ monthly queries. Self-hosted alternatives with intelligent routing become dramatically cheaper at scale.
+**Cross-Encoder Reranking** — A cross-encoder rescores the top results against your query after initial retrieval. In my benchmarks: +9.3 percentage point improvement in MRR@5.
 
-**Accuracy:** Hybrid search with cross-encoder reranking achieves **66.43% MRR@5** vs 56.72% for semantic-only search — a **+9.3 percentage point improvement**.
+**Knowledge Reflection** *(new)* — After every ingest, the system finds semantically related documents and asks Llama to synthesize what's new, how it connects to existing knowledge, and what gap remains. These reflections are stored, embedded, and boosted in search results. The knowledge base gets smarter as you add more documents — not just bigger.
 
-## Features
+**Intelligent Query Routing (V4)** — Not every query needs vector search. Entity lookups go to SQL (11ms), exact keyword queries go to BM25 (18ms), semantic questions go to the full pipeline. In testing, this cuts average embedding cost by 71% compared to running everything through vectors.
 
-### V4 Intelligent Routing (NEW!)
-- ✅ **Intent Classification** - Llama 3.2-3b query analysis (<100ms)
-- ✅ **6 Specialized Routes** - SQL, BM25, VECTOR, GRAPH, OCR, VISION
-- ✅ **71% Cost Reduction** - Smart routing vs one-size-fits-all
-- ✅ **70% Faster** - 11-18ms for entity/keyword queries
-- ✅ **Fallback Strategy** - Graceful degradation to semantic search
-- ✅ **Cost Tracking** - Per-route analytics and projections
+**Metadata Filtering** — Filter by `source_type`, `category`, `doc_type`, `tags`, `date_created`, `tenant_id`, `mime_type`, `file_name` — using `$eq`, `$ne`, `$in`, `$gt/$gte/$lt/$lte`. Filters run at the Vectorize layer, not in memory.
 
-### Core Search
-- ✅ **Hybrid Search** - Vector similarity + BM25 keyword matching
-- ✅ **Reciprocal Rank Fusion (RRF)** - Intelligent result merging
-- ✅ **Cross-Encoder Reranking** - Precision scoring with `bge-reranker-base`
-- ✅ **Recursive Chunking** - Semantic boundary-aware with 15% overlap
+**Multimodal** — Ingest images by upload or URL. Llama 4 Scout 17B handles vision + OCR. Text queries can surface image results. Everything lives in one unified index.
 
-### Multimodal Search (NEW in V3!)
-- ✅ **Image Ingestion** - Upload screenshots, diagrams, photos
-- ✅ **Llama 4 Scout Vision** - AI-powered image understanding
-- ✅ **OCR Extraction** - Automatic text extraction from images (700+ chars)
-- ✅ **Reverse Image Search** - Find similar images by uploading a query image
-- ✅ **Unified Index** - Text and images searchable together (384 dims)
-- ✅ **60s Cache** - 0ms response time for repeated queries
+**Native MCP Server** — Streamable HTTP at `/mcp`, backed by Cloudflare Durable Objects per session. Six tools: `search`, `ingest`, `ingest_image_url`, `find_similar_by_url`, `delete`, `stats`. Two lines of JSON to connect Claude Desktop. That's it.
 
-### Platform
-- ✅ **Interactive Dashboard** - Visual playground at `/dashboard`
-- ✅ **MCP Integration** - Works with Claude Desktop and AI agents
-- ✅ **One-Time Licensing** - Pay-once validation system
-- ✅ **AI SEO Ready** - JSON-LD schema + `llms.txt`
+**Multi-Tenancy** — One deployment, multiple isolated tenants. Map API keys to tenant IDs via a JSON secret. Every operation is automatically scoped. Tenants can't escape their namespace. You don't need a separate deployment per customer.
 
-### Production
-- ✅ **API Key Authentication** - Production-ready security
-- ✅ **Performance Monitoring** - Real-time timing breakdown
-- ✅ **CORS Support** - Ready for web applications
-- ✅ **Edge Deployment** - Runs globally on Cloudflare's network
+**Two-Layer Caching** — Cloudflare Cache API (global, shared, 60s SWR) + in-memory Map cache. Repeat queries cost zero.
 
-## Architecture
+**Rate Limiting** — Sliding-window limiter per tenant or IP. Configurable. Returns proper `Retry-After` headers.
 
-### V4 Intelligent Routing (Default: mode=v4)
+**Query Analytics** — Every query recorded: latency per stage, cache hit/miss, filters used. Surfaces through `/stats` and the built-in dashboard. No separate logging service.
+
+**Three Embedding Models** — `bge-small` (384d, fast, default), `bge-m3` (1024d, multilingual), `qwen3-0.6b` (1024d, best retrieval quality 2026). One env var to switch.
+
+---
+
+## The Knowledge Reflection Layer
+
+Standard RAG retrieves documents. It doesn't learn. Every query goes in cold — no memory of what it found before, no synthesis across documents, no growing understanding of your knowledge base.
+
+The reflection layer changes that. Every time you ingest a document:
+
+1. The system finds the most semantically related documents already in the index
+2. Llama 3.2 synthesises a three-sentence insight: what the new document adds, how it connects to existing knowledge, and what gap remains
+3. That reflection is embedded, stored with `doc_type=reflection`, and given a 1.5× ranking boost in search results
+4. After every 3 new documents, reflections are consolidated into a `doc_type=summary` — a compressed view of what the knowledge base has learned
+
+Your knowledge base builds a second layer of synthesised knowledge on top of raw documents. Related concepts get explicitly linked. Contradictions get surfaced. Search results include both raw chunks *and* distilled insights.
+
+You can filter to see only reflections (`doc_type: { "$eq": "reflection" }`), or exclude them (`"$ne": "reflection"`), or let them naturally surface alongside raw results — which is the default.
+
+---
+
+## Real-World Use Cases
+
+**Internal knowledge base** — Ingest your Notion exports, Confluence pages, internal docs. Give your team a search interface that understands context, not just keywords. Connect Claude Desktop via MCP and every team member has AI-assisted search over your entire knowledge base without you building anything custom.
+
+**SaaS with per-customer document search** — Enable multi-tenancy. Each customer gets their own isolated namespace in the same deployment. One Worker, one Vectorize index, true data isolation. No separate search service per customer.
+
+**Legal / compliance retrieval** — Ingest contracts, filings, policy docs. Filter by `date_created`, `category`, `source_type`. The reflection layer surfaces connections between documents across time — useful for spotting contradictions in evolving policy.
+
+**Developer tool that understands your codebase** — Ingest your docs, changelogs, runbooks, incident postmortems. Hook it to Claude Desktop. Ask questions about your own architecture decisions and incident history.
+
+**Receipt and invoice processing** — Upload receipt images, Llama 4 Scout extracts the text, both semantic description and raw OCR land in the index. Search "dinner expense over $100 in March" and it works.
+
+---
+
+## Live Demo
+
+Once deployed, your dashboard lives at:
+
 ```
-User Query
-    │
-    ├──► Intent Classifier (Llama 3.2-3b) ──► Route Selector
-    │
-    ├─► SQL Route (11ms) ──────► Direct D1 lookup
-    ├─► BM25 Route (18ms) ─────► Pure keyword search  
-    ├─► VECTOR Route (706ms) ──► Hybrid search ──┐
-    │                                            │
-    │   ┌──► Vector (Vectorize, 384d) ──────────┤
-    │   │                                        ├──► RRF ──► Reranker ──► Results
-    │   └──► Keyword (D1 BM25, TF-IDF) ─────────┘
-    │
-    ├─► GRAPH Route (11ms) ────► Knowledge graph traversal
-    ├─► OCR Route (TBD) ───────► LightOnOCR-2 text extraction
-    └─► VISION Route (7.7s) ───► Llama 4 Scout image analysis
+https://your-worker.workers.dev/dashboard
 ```
 
-### V3 Mode (Legacy: default search)
-```
-User Query
-    │
-    ├──► Vector Search (Vectorize) ──┐
-    │    └─ BGE embeddings (384d)    │
-    │                                ├──► RRF Fusion ──► Reranker ──► Results
-    └──► Keyword Search (D1 BM25) ───┘
-         └─ Term frequency/IDF
+It's a full playground: search with filters, ingest documents, upload images, see per-stage latency breakdown, monitor cache hit rate, check which embedding model is active, browse query analytics. Not a toy.
 
-Images
-    │
-    ├──► Llama 4 Scout ──► Description (semantic)
-    │                  └─► OCR Text (keywords)
-    │
-    └──► BGE Embeddings ──► Same 384d index
+---
 
-Performance: 
-- Text search: ~900ms (first), 0ms (cached)
-- Image ingest: ~7.7s (vision + OCR + embedding)
-- Reverse search: ~8s (vision + search)
+## Quick Start
+
+You need: a Cloudflare account (free tier works), Node.js v18+, Wrangler CLI.
+
+```bash
+npm install -g wrangler
+wrangler login
 ```
 
-**Tech Stack:**
-- **Runtime**: Cloudflare Workers
-- **Vector DB**: Cloudflare Vectorize (384 dims, single unified index)
-- **SQL DB**: Cloudflare D1 (BM25 keywords)
-- **Embedding**: `@cf/baai/bge-small-en-v1.5`
-- **Reranker**: `@cf/baai/bge-reranker-base`
-- **Vision**: `@cf/meta/llama-4-scout-17b-16e-instruct` 
-- **Routing**: `@cf/meta/llama-3.2-3b-instruct` (V4 intent classification)
-
-## Quick Start (10 Minutes)
-
-
-### Prerequisites
-- [Cloudflare account](https://dash.cloudflare.com/sign-up) (free tier works)
-- [Node.js](https://nodejs.org/) v18+
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
-
-### 1. Clone & Install
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/dannwaneri/vectorize-mcp-worker.git
@@ -156,633 +112,213 @@ cd vectorize-mcp-worker
 npm install
 ```
 
-### 2. Create Vectorize Index
+### 2. Create your Vectorize index
 
 ```bash
+# Default: bge-small, 384 dimensions
 wrangler vectorize create mcp-knowledge-base --dimensions=384 --metric=cosine
+
+# Better quality: qwen3-0.6b or bge-m3, 1024 dimensions
+wrangler vectorize create mcp-knowledge-base --dimensions=1024 --metric=cosine
 ```
 
-### 3. Setup Configuration
-```bash
-# Copy the example configuration file
-cp wrangler.toml.example wrangler.toml
-# Windows PowerShell: copy wrangler.toml.example wrangler.toml
+### 3. Create your D1 database
 
-# Create your D1 database
+```bash
 wrangler d1 create mcp-knowledge-db
 ```
 
-Copy the `database_id` from the output and update `wrangler.toml` (line 15):
+Copy the `database_id` from the output.
+
+### 4. Configure
+
+```bash
+cp wrangler.toml.example wrangler.toml
+```
+
+Paste your `database_id` into `wrangler.toml`. That's the only required edit.
+
 ```toml
 [[d1_databases]]
 binding = "DB"
 database_name = "mcp-knowledge-db"
-database_id = "YOUR_DATABASE_ID"  # ← Replace with your actual database_id
+database_id = "paste-your-id-here"
 ```
 
-**⚠️ Security:** `wrangler.toml` contains sensitive configuration and is in `.gitignore`. Never commit it to git.
-
-### 4. Run Migrations
+### 5. Apply schema and deploy
 
 ```bash
 wrangler d1 execute mcp-knowledge-db --remote --file=./schema.sql
-```
-
-### 5. Deploy
-
-```bash
+wrangler d1 execute mcp-knowledge-db --remote --file=./migrations/001_add_tenant_id.sql
+wrangler d1 execute mcp-knowledge-db --remote --file=./migrations/002_add_reflection_fields.sql
 wrangler deploy
 ```
 
-### 6. Set API Key (Optional)
+### 6. Set your API key
 
 ```bash
 wrangler secret put API_KEY
 ```
 
-### 7. Test It
+Done. Visit `https://your-worker.workers.dev/test` to confirm everything is connected.
 
-Open your dashboard: `https://your-worker.workers.dev/dashboard`
-
-Or via CLI:
-```bash
-# Ingest a document
-curl -X POST https://your-worker.workers.dev/ingest \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"id": "doc-1", "content": "Your document content here", "category": "docs"}'
-
-# Search
-curl -X POST https://your-worker.workers.dev/search \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"query": "your search query", "topK": 5}'
-```
-
-
-## Quick Demo
-
-### Upload an Image
-```bash
-curl -X POST https://your-worker.workers.dev/ingest-image \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "id=dashboard-001" \
-  -F "image=@dashboard.png" \
-  -F "imageType=screenshot"
-```
-
-### Search by Description
-```bash
-curl -X POST https://your-worker.workers.dev/search \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "dashboard with navigation", "topK": 5}'
-```
-
-**Result:** Your image appears in search results! 🎉
-
-### Find Similar Images
-```bash
-curl -X POST https://your-worker.workers.dev/find-similar-images \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "image=@similar-dashboard.png" \
-  -F "topK=5"
-```
-
-**Result:** System finds visually similar dashboards you've indexed.
-
-## V4 Intelligent Routing
-
-### Using V4 Mode (Default)
-
-```bash
-# V4 mode with intelligent routing
-curl -X POST https://your-worker.workers.dev/search?mode=v4 \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What is Haaland player ID?", "topK": 5}'
-```
-
-**Response includes route metadata:**
-```json
-{
-  "version": "v4",
-  "metadata": {
-    "route": "SQL",
-    "intent": "ENTITY_LOOKUP", 
-    "routeTime": "11ms",
-    "reasoning": "Direct SQL lookup for entity: Haaland"
-  },
-  "performance": {
-    "sqlQueryTime": "11ms",
-    "totalTime": "11ms"
-  },
-  "cost": {
-    "route": "SQL",
-    "totalCost": 0.000001
-  }
-}
-```
-
-### Route Examples
-
-**SQL Route** (Entity lookups, 11ms):
-```bash
-curl -X POST "https://your-worker.workers.dev/search?mode=v4" \
-  -d '{"query": "Find user John Smith"}'
-# Uses: Direct D1 query
-```
-
-**BM25 Route** (Keyword exact, 18ms):
-```bash
-curl -X POST "https://your-worker.workers.dev/search?mode=v4" \
-  -d '{"query": "numpy.array documentation"}'
-# Uses: Pure keyword search, no embeddings
-```
-
-**VECTOR Route** (Semantic search, 706ms):
-```bash
-curl -X POST "https://your-worker.workers.dev/search?mode=v4" \
-  -d '{"query": "Players similar to Salah"}'  
-# Uses: Hybrid vector + BM25 with reranking
-```
-
-**GRAPH Route** (Relationships, 11ms):
-```bash
-curl -X POST "https://your-worker.workers.dev/search?mode=v4" \
-  -d '{"query": "Who owns Liverpool players?"}'
-# Uses: Knowledge graph traversal
-```
-
-### Using V3 Mode (Legacy)
-
-```bash
-# V3 mode - all queries use hybrid search
-curl -X POST https://your-worker.workers.dev/search \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "test", "topK": 5}'
-```
-
-### Cost Analytics
-
-```bash
-# Get cost projections
-curl https://your-worker.workers.dev/analytics/cost?queriesPerDay=1000 \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-**Response:**
-```json
-{
-  "monthlyProjection": {
-    "v3Cost": "$0.393300",
-    "v4Cost": "$0.112983", 
-    "savings": "$0.280317",
-    "savingsPercent": "71.3%"
-  }
-}
-```
-
-## 🔒 Security Best Practices
-
-### Configuration Files
-- ✅ **DO** commit: `wrangler.toml.example`, `.gitignore`
-- ❌ **DON'T** commit: `wrangler.toml`, `.dev.vars`, `.env` files
-
-### API Keys
-- Store API keys using Wrangler secrets (never in code):
-```bash
-  wrangler secret put API_KEY
-```
-- API key is required for all endpoints except:
-  - `GET /` (API docs)
-  - `GET /dashboard` (UI playground)
-  - `GET /test` (health check)
-  - `GET /llms.txt` (search engine info)
-
-### Database Security
-- Each developer should create their own D1 database
-- Never share database IDs publicly
-- Use `wrangler.toml.example` as a template
-
-### Setting Up for Development
-1. Copy `wrangler.toml.example` → `wrangler.toml`
-2. Create your own D1 database
-3. Update `wrangler.toml` with YOUR database ID
-4. Set API key: `wrangler secret put API_KEY`
-5. Never commit `wrangler.toml`
-
-
-
-## API Endpoints
-
-
-### Image Endpoints (NEW!)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/ingest-image` | POST | Upload and index images with AI description + OCR |
-| `/find-similar-images` | POST | Reverse image search - find visually similar images |
-
-#### Image Ingestion Example
-```bash
-curl -X POST https://your-worker.workers.dev/ingest-image \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "id=screenshot-001" \
-  -F "image=@dashboard.png" \
-  -F "category=ui-screenshots" \
-  -F "imageType=screenshot"
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "documentId": "screenshot-001",
-  "description": "Dashboard interface with metrics cards showing...",
-  "extractedText": "API Key\nEnter your API key\nTest\nServer Online...",
-  "performance": {
-    "multimodalProcessing": "4852ms",
-    "totalTime": "7737ms"
-  }
-}
-```
-
-#### Reverse Image Search Example
-```bash
-curl -X POST https://your-worker.workers.dev/find-similar-images \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -F "image=@query.png" \
-  -F "topK=5"
-```
-
-**Response:**
-```json
-{
-  "query": "Dashboard interface with metrics cards...",
-  "results": [
-    {
-      "id": "screenshot-001",
-      "score": 0.0156,
-      "content": "Dashboard interface...",
-      "category": "ui-screenshots",
-      "isImage": true
-    }
-  ],
-  "performance": {
-    "totalTime": "1135ms"
-  }
-}
-```
-
-**Image Types:**
-- `screenshot` - UI screenshots (extracts button labels, form fields)
-- `diagram` - Flowcharts, architecture diagrams
-- `document` - Scanned documents, forms
-- `chart` - Data visualizations
-- `photo` - General photographs
-- `auto` - Let AI determine (default)
-
-### Public Endpoints (No Auth)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | API documentation |
-| `/test` | GET | Health check |
-| `/dashboard` | GET | Interactive UI |
-| `/llms.txt` | GET | AI search engine info |
-| `/mcp/tools` | GET | List MCP tools |
-
-### Protected Endpoints (Auth Required)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/search` | POST | Hybrid semantic search (V3 mode) |
-| `/search?mode=v4` | POST | Intelligent routing (V4 mode) |
-| `/classify-intent` | POST | Test intent classification |
-| `/analytics/cost` | GET | Cost analytics and projections |
-| `/ingest` | POST | Ingest document with auto-chunking |
-| `/stats` | GET | Index statistics |
-| `/documents/:id` | DELETE | Delete document |
-| `/mcp/call` | POST | Execute MCP tool |
-
-### License Endpoints (Admin)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/license/create` | POST | Create new license |
-| `/license/validate` | POST | Validate license key |
-| `/license/list` | GET | List all licenses |
-| `/license/revoke` | POST | Revoke a license |
-
-## Search API
-
-### Request
-```json
-{
-  "query": "How does hybrid search work?",
-  "topK": 5,
-  "rerank": true
-}
-```
-
-### Response
-```json
-{
-  "query": "How does hybrid search work?",
-  "topK": 5,
-  "resultsCount": 5,
-  "results": [
-    {
-      "id": "doc-1-chunk-0",
-      "score": 0.0142,
-      "content": "Hybrid search combines vector similarity...",
-      "category": "technical",
-      "scores": {
-        "vector": 0.85,
-        "keyword": 12.4,
-        "reranker": 0.92
-      }
-    }
-  ],
-  "performance": {
-    "embeddingTime": "94ms",
-    "vectorSearchTime": "650ms",
-    "keywordSearchTime": "50ms",
-    "rerankerTime": "118ms",
-    "totalTime": "912ms"
-  }
-}
-```
-
-## Ingest API
-
-### Request
-```json
-{
-  "id": "unique-doc-id",
-  "content": "Your document content. Can be multiple paragraphs.\n\nWill be automatically chunked.",
-  "title": "Optional Title",
-  "category": "optional-category"
-}
-```
-
-### Response
-```json
-{
-  "success": true,
-  "documentId": "unique-doc-id",
-  "chunksCreated": 3,
-  "performance": {
-    "embeddingTime": "450ms",
-    "totalTime": "1200ms"
-  }
-}
-```
-
-## MCP Integration
-
-Use this worker as a tool for Claude Desktop, Gemini CLI, or any MCP-compatible AI agent.
-
-### Works with mcp-cli
-
-This server is compatible with [mcp-cli](https://github.com/philschmid/mcp-cli) for efficient tool discovery:
-
-```json
-// Add to mcp_servers.json
-{
-  "mcpServers": {
-    "vectorize": {
-      "url": "https://your-worker.workers.dev",
-      "headers": {
-        "Authorization": "Bearer ${VECTORIZE_API_KEY}"
-      }
-    }
-  }
-}
-```
-
-```bash
-# Discover tools
-mcp-cli vectorize
-
-# Get tool schema
-mcp-cli vectorize/search
-
-# Search your knowledge base
-mcp-cli vectorize/search '{"query": "cloudflare workers", "topK": 5}'
-
-# Ingest a document
-mcp-cli vectorize/ingest '{"id": "doc-1", "content": "Your content here"}'
-```
-
-### Direct API Access
-
-List Available Tools:
-```bash
-curl https://your-worker.workers.dev/mcp/tools
-```
-
-Call a Tool:
-```bash
-curl -X POST https://your-worker.workers.dev/mcp/call \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{
-    "tool": "search",
-    "arguments": {
-      "query": "cloudflare workers",
-      "topK": 3
-    }
-  }'
-```
-
-### Available Tools
-- `search` - Search the knowledge base (hybrid vector + BM25)
-- `ingest` - Add text documents with auto-chunking
-- `ingest_image` - Add images with AI description + OCR (NEW!)
-- `stats` - Get index statistics
-- `delete` - Remove documents
-```
-
-## License System
-
-### Create a License
-```bash
-curl -X POST https://your-worker.workers.dev/license/create \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -d '{"email": "customer@example.com", "plan": "pro"}'
-```
-
-### Plans
-| Plan | Max Documents | Max Queries/Day |
-|------|---------------|-----------------|
-| standard | 10,000 | 1,000 |
-| pro | 50,000 | 5,000 |
-| enterprise | 100,000 | 10,000 |
-
-### Validate a License
-```bash
-curl -X POST https://your-worker.workers.dev/license/validate \
-  -H "Content-Type: application/json" \
-  -d '{"license_key": "lic_xxxxx"}'
-```
-
-## Performance
-
-Real-world benchmarks from production:
-
-| Operation | Time | Notes |
-|-----------|------|-------|
-| **V4 Intent Classification** | **~50ms** | Llama 3.2-3b |
-| **V4 SQL Route** | **11ms** | Entity lookups |
-| **V4 BM25 Route** | **18ms** | Keyword exact |
-| **V4 Graph Route** | **11ms** | Relationships |
-| Text Embedding | ~90ms | BGE-small-en |
-| Vector Search | ~650ms | Vectorize query |
-| Keyword Search (BM25) | ~50ms | D1 database |
-| Reranking | ~120ms | Cross-encoder |
-| **Hybrid Text Search** | **~900ms** | Full pipeline |
-| **Cached Search** | **0ms** | 60s TTL cache |
-| Image Vision + OCR | ~5s | Llama 4 Scout (2 calls) |
-| Image Embedding | ~2s | BGE-small-en |
-| **Image Ingestion** | **~7.7s** | Vision + OCR + embedding |
-| **Reverse Image Search** | **~8s** | Vision + hybrid search |
-
-## Cost Comparison
-
-| Solution | Monthly Cost | Edge Native | Hybrid Search | Intelligent Routing | MCP |
-|----------|-------------|-------------|---------------|---------------------|-----|
-| **This Project (V4)** | **~$0.11** | ✅ | ✅ | ✅ | ✅ |
-| **This Project (V3)** | **~$0.39** | ✅ | ✅ | ❌ | ✅ |
-| Pinecone | $50-200+ | ❌ | Partial | ❌ | ❌ |
-| Weaviate Cloud | $25-150+ | ❌ | ✅ | ❌ | ❌ |
-| Qdrant Cloud | $25-100+ | ❌ | ❌ | ❌ | ❌ |
-| pgvector (self-hosted) | $40-60+ | ❌ | ❌ | ❌ | ❌ |
-
-## Dashboard
-
-Access the interactive dashboard at `/dashboard`:
-
-- 📊 **Stats Panel** - Vector count, document count
-- 📥 **Ingest Form** - Add documents with auto-chunking
-- 🔎 **Search Interface** - Test queries with latency monitor
-- 🔑 **Auth Management** - Enter API key for protected endpoints
-
-## Files
-
-```
-vectorize-mcp-worker/
-├── src/
-│   └── index.ts        # Main worker code
-├── schema.sql          # D1 database schema
-├── wrangler.toml       # Cloudflare configuration
-├── package.json
-└── README.md
-```
-
-## Local Development
-
-```bash
-# Start dev server
-wrangler dev
-
-# Note: Vectorize requires deployment to test
-# D1 works locally with --local flag
-```
-
-## Troubleshooting
-
-### "D1 binding not found"
-```bash
-wrangler d1 create mcp-knowledge-db
-# Update wrangler.toml with database_id
-wrangler d1 execute mcp-knowledge-db --remote --file=./schema.sql
-```
-
-### "Vectorize index not found"
-```bash
-wrangler vectorize create mcp-knowledge-base --dimensions=384 --metric=cosine
-```
-
-### "401 Unauthorized"
-Either set an API key or remove it for dev mode:
-```bash
-wrangler secret put API_KEY    # Set for production
-wrangler secret delete API_KEY # Remove for dev
-```
-
-### Empty search results
-Ingest some documents first:
-```bash
-curl -X POST https://your-worker.workers.dev/ingest \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"id": "test", "content": "Your content here"}'
-```
-
-
-
-## ✅ Deployment Checklist
-
-Before deploying:
-- [ ] `wrangler.toml` exists locally (copied from example)
-- [ ] `wrangler.toml` has YOUR database ID (not placeholder)
-- [ ] `wrangler.toml` is NOT tracked by git
-- [ ] Vectorize index created: `mcp-knowledge-base`
-- [ ] D1 database created and migrated
-- [ ] API_KEY secret set (if using authentication)
-- [ ] Test deployment: `wrangler deploy`
-- [ ] Visit dashboard: `https://your-worker.workers.dev/dashboard`
-
-Check if `wrangler.toml` is properly ignored:
-```bash
-git check-ignore wrangler.toml  # Should output: wrangler.toml
-```
-
-
-## Contributors
-
-Thanks to these people for improving the project:
-
-- [@luojiyin1987](https://github.com/luojiyin1987) - Bug reports and testing
-
-## Contributing
-
-Areas that need help:
-1. **Multi-modal Support** - Images, tables, code
-2. **Batch Ingestion** - Bulk document upload
-3. **Analytics Dashboard** - Usage metrics
-4. **Testing Suite** - Comprehensive tests
-5. **Documentation** - More examples
-
-## 💼 Professional Services
-
-**Need help deploying?**
-
-- **Setup:** $2,500 (one-time)
-- **Timeline:** 48 hours
-- **Includes:** Full configuration, up to 10K docs indexed, 2 weeks support
-
-**[Hire me on Upwork](https://www.upwork.com/freelancers/~01d5946abaa558d9aa)**
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file.
-
-## Author
-
-**Daniel Nwaneri** - Cloudflare Workers AI Specialist
-
-- 🐦 Twitter: [@dannwaneri](https://twitter.com/dannwaneri)
-- 💼 Upwork: [Profile](https://www.upwork.com/freelancers/~01d5946abaa558d9aa)
-- 📝 Blog: [DEV.to](https://dev.to/dannwaneri)
-- 🔗 GitHub: [@dannwaneri](https://github.com/dannwaneri)
+**Prefer one click?** The deploy button at the top scaffolds everything automatically. You'll still need to set `API_KEY` as a secret afterward.
 
 ---
 
-**⭐ Star the repo if this saved you money!**
+## Claude Desktop & MCP Integration
 
-**💬 Questions? [Open an issue](https://github.com/dannwaneri/vectorize-mcp-worker/issues)**
+The MCP server runs at `/mcp` using Streamable HTTP transport (the 2026 standard). Each session gets a dedicated Durable Object instance for isolated state. Six tools cover the full lifecycle.
+
+### Claude Desktop
+
+Add this to your config file:
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "vectorize": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://your-worker.workers.dev/mcp",
+        "--header",
+        "Authorization: Bearer YOUR_API_KEY"
+      ]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The six tools appear in the tool picker. Then:
+
+> *"Search my knowledge base for anything about our Q1 pricing decisions"*
+> *"Ingest this document — tag it category: finance, source_type: pdf"*
+> *"What synthesised insights do we have on infrastructure costs?"*
+> *"Find images similar to this URL and show me the top 5"*
+
+### Cursor, Windsurf, or any native Streamable HTTP client
+
+```json
+{
+  "mcpServers": {
+    "vectorize": {
+      "url": "https://your-worker.workers.dev/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_API_KEY"
+      }
+    }
+  }
+}
+```
+
+### Available Tools
+
+| Tool | What it does |
+|------|-------------|
+| `search` | Hybrid vector + BM25 with metadata filters, reranking, and reflection boost |
+| `ingest` | Add a text document with auto-chunking; re-ingesting the same ID overwrites |
+| `ingest_image_url` | Fetch a public image URL, run vision + OCR, embed and index |
+| `find_similar_by_url` | Reverse image search — give it an image URL, get visually similar results |
+| `delete` | Remove a document and all its chunks. Tenant-scoped. |
+| `stats` | Index info, active model, query analytics summary |
+
+All tools are automatically scoped to your tenant from the API key. You can't accidentally read another tenant's data.
+
+---
+
+## Tech Stack
+
+Everything runs on Cloudflare. No external services. No third-party billing. No data leaving your account.
+
+| Component | What's used |
+|-----------|------------|
+| **Runtime** | Cloudflare Workers (TypeScript) |
+| **Vector store** | Cloudflare Vectorize |
+| **Keyword / metadata store** | Cloudflare D1 (SQLite) |
+| **HTTP cache** | Cloudflare Cache API |
+| **MCP session state** | Cloudflare Durable Objects |
+| **Embedding (default)** | `@cf/baai/bge-small-en-v1.5` — 384d |
+| **Embedding (best quality)** | `@cf/qwen/qwen3-embedding-0.6b` — 1024d |
+| **Embedding (multilingual)** | `@cf/baai/bge-m3` — 1024d |
+| **Reranker** | `@cf/baai/bge-reranker-base` |
+| **Vision / OCR** | `@cf/meta/llama-4-scout-17b-16e-instruct` |
+| **Query routing + reflection** | `@cf/meta/llama-3.2-3b-instruct` |
+| **MCP SDK** | `agents` v0.10 + `@modelcontextprotocol/sdk` v1.29 |
+
+Switching embedding models is one env var. Switching from `bge-small` (384d) to `qwen3-0.6b` (1024d) requires a new Vectorize index and re-ingest — no code changes.
+
+---
+
+## Cost
+
+Straight numbers, no vague "cheaper than Pinecone" hand-waving.
+
+**At 1,000 queries/day with V4 intelligent routing:**
+- ~$0.11/month — most queries hit the SQL or BM25 route, no embedding needed
+- ~$0.39/month — if every query goes through the full vector pipeline (V3 mode)
+- ~$0/month cached — once a query is in the CF cache, it costs nothing to serve again
+
+**At 10,000 queries/day:** roughly $1–5/month depending on query mix and cache hit rate.
+
+The Cloudflare Workers free tier handles 100,000 requests/day before you pay anything for compute. Vectorize, D1, and Workers AI each have their own free tiers too. At the volumes most teams actually run, the total bill is boring in the best way.
+
+---
+
+## Comparison
+
+| Approach | Latency | Cost | Ops burden | MCP | Reflection layer |
+|----------|---------|------|------------|-----|-----------------|
+| **This project** | 0ms cached, ~900ms cold | ~$1–5/mo | Very low | Native | Yes |
+| **Basic RAG** (OpenAI + Pinecone) | 200–500ms | $50–200+/mo | Low | No | No |
+| **LangChain / LlamaIndex** | Depends | Depends | Medium | Partial | No |
+| **Karpathy-style** (just the LLM) | Fast | Low | None | — | No |
+| **Self-hosted** (Weaviate, Qdrant) | Fast | $40–100+/mo infra | High | No | No |
+
+If your data is public knowledge and freshness doesn't matter, the LLM alone is often the right call. If your data is private, proprietary, or time-sensitive — you need retrieval. This is the fastest path to production-grade retrieval I've found, and the only one in this list where the knowledge base gets smarter over time.
+
+---
+
+## Roadmap
+
+- [ ] **Batch ingestion** — `POST /ingest/batch` for bulk uploads without N individual round-trips
+- [ ] **Incremental re-indexing** — update document metadata without full re-embed
+- [ ] **Webhook support** — trigger ingestion from Notion, GitHub, Slack events
+- [ ] **OpenAPI spec** — auto-generated from route definitions, for client SDK generation
+- [ ] **Test suite** — unit tests for middleware, engines, and the MCP agent
+
+PRs welcome on any of these. If you're running this in production and hitting a specific wall, open an issue and I'll prioritise it.
+
+---
+
+## Contributing & Feedback
+
+If this saved you time or money, a GitHub star helps other people find it.
+
+If something's broken or confusing, [open an issue](https://github.com/dannwaneri/vectorize-mcp-worker/issues). I read every one.
+
+The codebase is intentionally straightforward — no frameworks on top of frameworks. The highest-value contributions right now are real-world usage reports, the batch ingestion endpoint, and test coverage for the middleware and reflection layer.
+
+---
+
+## Professional Services
+
+Need this deployed, customised, or integrated into an existing product?
+
+- **Setup & onboarding:** $2,500 one-time — full deployment, up to 10K docs indexed, 2 weeks of support
+- **[Hire me on Upwork](https://www.upwork.com/freelancers/~01d5946abaa558d9aa)**
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+**Daniel Nwaneri** — building useful things on Cloudflare Workers
+
+[Twitter](https://twitter.com/dannwaneri) · [Upwork](https://www.upwork.com/freelancers/~01d5946abaa558d9aa) · [DEV.to](https://dev.to/dannwaneri) · [GitHub](https://github.com/dannwaneri)

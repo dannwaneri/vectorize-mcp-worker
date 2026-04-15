@@ -1,6 +1,7 @@
 import { Env } from '../types/env';
 import { QueryIntent, RouteResult } from './types';
 import { IntentClassifier } from './intentClassifier';
+import { SearchFilters } from '../types/search';
 
 // Route imports (will create these)
 import { sqlRoute } from './routes/sqlRoute';
@@ -35,6 +36,7 @@ export class RouteSelector {
       topK?: number;
       hasImage?: boolean;
       imageBuffer?: ArrayBuffer;
+      filters?: SearchFilters;
     },
     env: Env
   ): Promise<RouteResult & { cost?: RouteCost }> {
@@ -56,7 +58,7 @@ export class RouteSelector {
           break;
         
         case 'SEMANTIC_SEARCH':
-          result = await vectorRoute(query, context, env);
+          result = await vectorRoute(query, { ...context, filters: context.filters }, env);
           break;
         
         case 'KEYWORD_EXACT':
@@ -86,7 +88,7 @@ export class RouteSelector {
         
         default:
           // Unknown intent, default to semantic search
-          result = await vectorRoute(query, context, env);
+          result = await vectorRoute(query, { ...context, filters: context.filters }, env);
       }
       
     } catch (error) {
@@ -166,8 +168,8 @@ export class RouteSelector {
     
     console.warn(`Fallback activated: ${failedIntent} → SEMANTIC_SEARCH (${reason})`);
     
-    const result = await vectorRoute(query, context, env);
-    
+    const result = await vectorRoute(query, { ...context, filters: context.filters }, env);
+
     result.metadata.fallbackUsed = true;
     result.metadata.reasoning = `Primary route (${failedIntent}) failed: ${reason}. Using semantic search fallback.`;
     

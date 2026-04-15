@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS documents (
     parent_id TEXT,
     word_count INTEGER,
     is_image INTEGER DEFAULT 0,
+    tenant_id TEXT DEFAULT NULL,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -37,6 +38,7 @@ CREATE INDEX IF NOT EXISTS idx_keywords_term ON keywords(term);
 CREATE INDEX IF NOT EXISTS idx_keywords_doc ON keywords(document_id);
 CREATE INDEX IF NOT EXISTS idx_documents_parent ON documents(parent_id);
 CREATE INDEX IF NOT EXISTS idx_documents_image ON documents(is_image);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant ON documents(tenant_id);
 
 INSERT OR IGNORE INTO doc_stats (id, total_documents, avg_doc_length) VALUES (1, 0, 0);
 

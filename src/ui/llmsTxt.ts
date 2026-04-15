@@ -23,7 +23,10 @@ A semantic search API combining vector similarity with BM25 keyword matching, us
 - Runtime: Cloudflare Workers
 - Vector DB: Cloudflare Vectorize
 - SQL: Cloudflare D1
-- Embedding: @cf/baai/bge-small-en-v1.5 (384 dimensions)
+- Embedding: configurable via EMBEDDING_MODEL env var
+  - bge-small (default): @cf/baai/bge-small-en-v1.5 — 384 dimensions
+  - bge-m3: @cf/baai/bge-m3 — 1024 dimensions, multilingual
+  - qwen3-0.6b: @cf/qwen/qwen3-embedding-0.6b — 1024 dimensions, best quality 2026
 - Reranker: @cf/baai/bge-reranker-base
 
 ## Use Cases
