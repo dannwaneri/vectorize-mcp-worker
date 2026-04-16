@@ -164,13 +164,37 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
 .footer a{color:#666;text-decoration:none}
 .footer a:hover{color:#e05a4a}
 
+/* File upload drop zone */
+.file-drop{border:2px dashed #2a2a2a;border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:12px;background:#111}
+.file-drop:hover,.file-drop.drag-over{border-color:#e05a4a;background:#1a0f0e}
+.file-drop input[type="file"]{display:none}
+.file-drop-label{font-size:0.875rem;color:#666;display:block;margin-bottom:0;cursor:pointer}
+.file-drop-label span{color:#e05a4a;font-weight:600}
+.file-name-badge{display:inline-flex;align-items:center;gap:6px;background:#1a1a1a;border:1px solid #262626;border-radius:6px;padding:4px 10px;font-size:0.78rem;color:#ccc;margin-top:6px}
+.or-divider{display:flex;align-items:center;gap:12px;margin:12px 0;color:#444;font-size:0.78rem}
+.or-divider::before,.or-divider::after{content:'';flex:1;border-top:1px solid #262626}
+
 @media(max-width:640px){
   .container{padding:16px 12px}
-  .header h1{font-size:1.5rem}
+  .header h1{font-size:1.4rem}
+  .header p{font-size:0.8rem}
+  .tab{padding:10px 12px;font-size:0.8rem}
+  .card{padding:16px}
+  .card-title{font-size:1.05rem;margin-bottom:14px}
   .demo-grid{grid-template-columns:1fr}
   .filter-grid{grid-template-columns:1fr}
   .perf-grid{grid-template-columns:1fr}
-  .search-options{gap:12px}
+  .search-options{flex-direction:column;align-items:flex-start;gap:10px}
+  .flex-row{flex-direction:column}
+  .flex-row .btn{width:100%}
+  .stats-row{gap:8px}
+  .stat-value{font-size:1.4rem}
+  .stat-card{padding:12px 8px}
+}
+@media(max-width:400px){
+  .stats-row{grid-template-columns:repeat(3,1fr)}
+  .stat-value{font-size:1.1rem}
+  .stat-label{font-size:0.62rem}
 }
 </style>
 </head>
@@ -301,7 +325,13 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
     <input type="text" id="docId" placeholder="my-article-001">
     <label>Category <span style="color:#555;font-weight:400">(optional)</span></label>
     <input type="text" id="docCategory" placeholder="e.g., docs, articles, notes">
-    <label>Content</label>
+    <label>Upload File <span style="color:#555;font-weight:400">(.txt, .md, .csv)</span></label>
+    <div class="file-drop" id="docFileDrop" onclick="document.getElementById('docFile').click()" ondragover="handleDocDragOver(event)" ondragleave="handleDocDragLeave(event)" ondrop="handleDocDrop(event)">
+      <input type="file" id="docFile" accept=".txt,.md,.csv,.json" onchange="handleDocFile(event)">
+      <label class="file-drop-label">&#128196; Drop a file here or <span>browse</span></label>
+      <div id="docFileName" style="display:none" class="file-name-badge">&#128196; <span id="docFileNameText"></span> <button onclick="clearDocFile(event)" style="background:none;border:none;color:#666;cursor:pointer;padding:0;width:auto;font-size:0.9rem;line-height:1">&#10005;</button></div>
+    </div>
+    <div class="or-divider">or paste text</div>
     <textarea id="docContent" placeholder="Paste any text — articles, docs, notes. It will be automatically chunked and indexed..."></textarea>
     <button class="btn" onclick="ingestDoc()">Ingest Document</button>
     <div id="ingestLog" class="log" style="display:none"></div>
@@ -988,6 +1018,48 @@ document.getElementById('searchQuery').addEventListener('input', (e) => {
     highlightLabel.title = '';
   }
 });
+
+function readDocFile(file) {
+  if (!file) return;
+  const allowed = ['text/plain','text/markdown','text/csv','application/json',''];
+  const ext = file.name.split('.').pop().toLowerCase();
+  const allowedExts = ['txt','md','csv','json'];
+  if (!allowedExts.includes(ext)) {
+    const log = document.getElementById('ingestLog');
+    log.style.display = 'block';
+    log.innerHTML = '<span class="error">Unsupported file type. Use .txt, .md, .csv, or .json</span>';
+    return;
+  }
+  // Auto-fill ID from filename
+  const docIdEl = document.getElementById('docId');
+  if (!docIdEl.value) {
+    docIdEl.value = file.name.replace(/\.[^/.]+$/, '').replace(/[\s_]+/g, '-').toLowerCase();
+  }
+  // Show badge
+  document.getElementById('docFileNameText').textContent = file.name + ' (' + (file.size > 1024 ? (file.size/1024).toFixed(1)+'KB' : file.size+'B') + ')';
+  document.getElementById('docFileName').style.display = 'inline-flex';
+  // Read content
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById('docContent').value = ev.target.result;
+  };
+  reader.readAsText(file);
+}
+function handleDocFile(e) { readDocFile(e.target.files[0]); }
+function handleDocDragOver(e) { e.preventDefault(); document.getElementById('docFileDrop').classList.add('drag-over'); }
+function handleDocDragLeave(e) { document.getElementById('docFileDrop').classList.remove('drag-over'); }
+function handleDocDrop(e) {
+  e.preventDefault();
+  document.getElementById('docFileDrop').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) readDocFile(file);
+}
+function clearDocFile(e) {
+  e.stopPropagation();
+  document.getElementById('docFile').value = '';
+  document.getElementById('docFileName').style.display = 'none';
+  document.getElementById('docContent').value = '';
+}
 
 loadStats();
 testAuth();
