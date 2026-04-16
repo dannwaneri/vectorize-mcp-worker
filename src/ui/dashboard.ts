@@ -209,7 +209,6 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
 <div class="tabs">
   <button class="tab active" data-tab="search" onclick="switchTab('search')">&#128269; Search</button>
   <button class="tab" data-tab="ingest" onclick="switchTab('ingest')">&#128229; Ingest</button>
-  <button class="tab" data-tab="analytics" onclick="switchTab('analytics')">&#128202; Analytics</button>
   <button class="tab" data-tab="setup" onclick="switchTab('setup')">&#9881;&#65039; Setup</button>
   <button class="tab" data-tab="guide" onclick="switchTab('guide')">&#128218; Guide</button>
 </div>
@@ -451,8 +450,10 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
   </div>
 </div>
 
-<!-- ========== ANALYTICS TAB ========== -->
-<div class="tab-content" id="tab-analytics">
+<!-- ========== SETUP TAB ========== -->
+<div class="tab-content" id="tab-setup">
+
+  <!-- Index Stats -->
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
       <h2 class="card-title" style="margin-bottom:0">&#128202; Index Stats</h2>
@@ -469,12 +470,13 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
     </div>
   </div>
 
+  <!-- Query Analytics -->
   <div class="card" id="analyticsSection">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <h2 class="card-title" style="margin-bottom:0">Query Analytics</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 class="card-title" style="margin-bottom:0">&#128270; Query Analytics</h2>
       <span id="analyticsQueryCount" style="font-size:0.78rem;color:#555">&#8212;</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px" id="analyticsStats">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
       <div class="stat-card">
         <div id="analyticsAvgLatency" style="font-size:1.4rem;font-weight:700;color:#fff">&#8212;</div>
         <div style="font-size:0.7rem;color:#555;margin-top:4px">Avg latency (ms)</div>
@@ -498,25 +500,23 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
     </div>
   </div>
 
+  <!-- Cost Calculator -->
   <div class="card">
-    <h2 class="card-title">&#128176; Cost Analytics</h2>
+    <h2 class="card-title">&#128176; Cost Calculator</h2>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
       <div>
         <label>Queries per Day</label>
         <input type="number" id="queriesPerDay" value="1000" min="100" max="100000">
-        <button class="btn" onclick="loadCostAnalytics()">Calculate Costs</button>
+        <button class="btn" onclick="loadCostAnalytics()">Calculate</button>
       </div>
       <div id="costResults" style="background:#111;border:1px solid #262626;border-radius:8px;padding:16px">
         <div style="font-size:0.75rem;color:#555;margin-bottom:8px">Monthly Cost Projection</div>
-        <div id="costProjection" style="color:#555;font-size:0.875rem">Click &ldquo;Calculate Costs&rdquo; to see projection</div>
+        <div id="costProjection" style="color:#555;font-size:0.875rem">Click &ldquo;Calculate&rdquo; to see projection</div>
       </div>
     </div>
     <div id="costBreakdown" style="display:none;margin-top:16px"></div>
   </div>
-</div>
 
-<!-- ========== SETUP TAB ========== -->
-<div class="tab-content" id="tab-setup">
   <div id="ghBanner" class="banner banner-info" style="display:flex;justify-content:space-between;align-items:center">
     <a href="https://github.com/dannwaneri/vectorize-mcp-worker" target="_blank" style="color:#60a5fa;text-decoration:none;font-weight:500">&#11088; Star on GitHub &mdash; Help spread the word!</a>
     <button onclick="document.getElementById('ghBanner').style.display='none'" style="background:none;border:none;color:#555;cursor:pointer;font-size:1rem;width:auto;padding:0;line-height:1">&#10005;</button>
