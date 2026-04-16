@@ -7,6 +7,35 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [4.1.0] — 2026-04-16
+
+### Added — Dashboard: Delete, Find Similar, Intent Debug, License Management, Guide Tab
+
+- **Delete document** — Ingest tab now has a "Delete Document" card. Enter a document ID,
+  confirm in a modal dialog, and it calls `DELETE /documents/:id`. Tenant-scoped; returns
+  an informative error if the ID doesn't belong to the caller's tenant.
+- **Advanced metadata on ingest** — Collapsible "Advanced Metadata" section on the
+  document ingest form exposes all six metadata fields: `title`, `source_type`, `tags`,
+  `mime_type`, `file_name`, `tenant_id`. Previously these were only settable via the API.
+- **File upload for document ingest** — Drag-and-drop (or click-to-browse) file picker on
+  the doc ingest form reads `.txt`, `.md`, and other text files directly in the browser
+  via the FileReader API. Filename auto-populates the `file_name` metadata field.
+- **Find Similar Images** — New card in the Ingest tab. Provide an image URL to call
+  `POST /find-similar-images` and display visually similar results with similarity scores.
+- **Intent Classifier debug tool** — New card in the Search tab. Type a query to call
+  `POST /classify-intent` and see the raw route classification (SQL / BM25 / VECTOR /
+  GRAPH / VISION / OCR), confidence score, and reasoning. Useful for diagnosing why a
+  query hits the wrong route.
+- **License management panel** — New section in the Setup tab with four sub-tabs:
+  Validate, Create, List, and Revoke. Wraps the full `/license/*` API surface that was
+  previously only accessible directly.
+- **Guide tab** (5th tab) — Step-by-step setup walkthrough with copyable code blocks
+  covering: Vectorize index creation, D1 database, wrangler.toml configuration, schema
+  migration, API key setup, and Claude Desktop MCP config. Includes a live "Check Setup
+  Status" button that calls `/test` and `/stats` to confirm each binding is connected.
+
+---
+
 ## [4.0.0] — 2026-04-13
 
 This release is a major production hardening pass. The core search and ingestion

@@ -91,7 +91,7 @@ Once deployed, your dashboard lives at:
 https://your-worker.workers.dev/dashboard
 ```
 
-It's a full playground: search with filters, ingest documents, upload images, see per-stage latency breakdown, monitor cache hit rate, check which embedding model is active, browse query analytics. Not a toy.
+It's a full playground: search with filters and intent classification debug, ingest documents (drag-and-drop file upload, advanced metadata), upload images, find visually similar images, delete documents, manage licenses, monitor cache hit rate, check which embedding model is active, browse query analytics. A built-in Guide tab walks through every setup step with copyable commands and a live status checker. Not a toy.
 
 ---
 
