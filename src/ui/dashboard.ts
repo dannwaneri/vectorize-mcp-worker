@@ -1277,7 +1277,7 @@ async function checkSetupStatus(){
     const icon = document.getElementById('chk-' + id + '-icon');
     const descEl = document.getElementById('chk-' + id + '-desc');
     icon.className = 'check-icon ' + (ok ? 'check-ok' : 'check-fail');
-    icon.textContent = ok ? '&#10003;' : '&#10007;';
+    icon.innerHTML = ok ? '&#10003;' : '&#10007;';
     if(descEl) descEl.textContent = desc;
   };
   ['api','vectorize','d1','ai'].forEach(id => {
