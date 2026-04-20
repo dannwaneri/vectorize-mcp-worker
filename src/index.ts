@@ -17,6 +17,7 @@ import { getLlmsTxt } from './ui/llmsTxt';
 
 
 import { handleLicenseValidate, handleLicenseCreate, handleLicenseList, handleLicenseRevoke } from './handlers/license';
+import { handlePatchMetadata } from './handlers/patchMetadata';
 import { handleMcpTools, handleMcpCall } from './handlers/mcp';
 
 import { handleCostAnalytics } from './handlers/analytics';
@@ -49,7 +50,7 @@ if (request.method === "OPTIONS") {
 		}
 
 		// Rate limiting — applied to all mutating / costly endpoints
-		if (request.method === 'POST' || request.method === 'DELETE') {
+		if (request.method === 'POST' || request.method === 'DELETE' || request.method === 'PATCH') {
 			if (!url.pathname.startsWith('/mcp') && url.pathname !== '/license/validate') {
 				const tenantId = resolveTenant(request, env);
 				const rateLimitError = checkRateLimit(request, env, tenantId);
@@ -92,6 +93,7 @@ if (url.pathname === "/" && request.method === "GET") {
 				"POST /ingest-image": "Ingest image with AI-generated description",
 				"POST /find-similar-images": "Find visually similar images by uploading a query image",
 				"DELETE /documents/:id": "Delete document",
+				"PATCH /documents/:id/metadata": "Update metadata without re-embedding",
 				"POST /license/validate": "Validate a license key",
 				"POST /license/create": "Create license (admin)",
 				"GET /license/list": "List all licenses (admin)",
@@ -199,6 +201,15 @@ if (url.pathname === "/ingest/batch" && request.method === "POST") {
 				return new Response(JSON.stringify({ error: "Document not found" }), { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders() } });
 			}
 			return new Response(JSON.stringify({ success: true, deleted: docId }), { headers: { "Content-Type": "application/json", ...corsHeaders() } });
+		}
+
+		// Patch Document Metadata (no re-embed)
+		if (url.pathname.startsWith("/documents/") && url.pathname.endsWith("/metadata") && request.method === "PATCH") {
+			const docId = url.pathname.replace("/documents/", "").replace("/metadata", "");
+			if (!docId) {
+				return new Response(JSON.stringify({ error: "Document ID required" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+			}
+			return handlePatchMetadata(request, env, docId);
 		}
 
 		// License endpoints

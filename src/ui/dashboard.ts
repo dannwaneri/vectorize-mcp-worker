@@ -484,6 +484,45 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
     </div>
     <div id="deleteLog" class="log" style="display:none"></div>
   </div>
+
+  <!-- Patch Metadata -->
+  <div class="card">
+    <h2 class="card-title">&#9998;&#65039; Update Metadata</h2>
+    <p style="color:#666;font-size:0.875rem;margin-bottom:14px">Update tags, category, title or other metadata without re-embedding. Only the fields you fill in will be changed.</p>
+    <label>Document ID</label>
+    <input type="text" id="patchDocId" placeholder="my-article-001">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label>Title</label>
+        <input type="text" id="patchTitle" placeholder="New title (optional)">
+      </div>
+      <div>
+        <label>Category</label>
+        <input type="text" id="patchCategory" placeholder="finance (optional)">
+      </div>
+      <div>
+        <label>Source Type</label>
+        <select id="patchSourceType" style="margin-bottom:12px">
+          <option value="">— unchanged —</option>
+          <option value="text">text</option>
+          <option value="pdf">pdf</option>
+          <option value="audio">audio</option>
+          <option value="video">video</option>
+          <option value="image">image</option>
+        </select>
+      </div>
+      <div>
+        <label>File Name</label>
+        <input type="text" id="patchFileName" placeholder="report.pdf (optional)">
+      </div>
+    </div>
+    <label>Tags <span style="color:#555;font-weight:400">(comma-separated)</span></label>
+    <input type="text" id="patchTags" placeholder="finance, q2, reviewed">
+    <label>Source URL</label>
+    <input type="text" id="patchSource" placeholder="https://example.com/doc (optional)">
+    <button class="btn" onclick="patchMetadata()" style="margin-top:4px">Update Metadata</button>
+    <div id="patchLog" class="log" style="display:none"></div>
+  </div>
 </div>
 
 <!-- ========== SETUP TAB ========== -->
@@ -1121,6 +1160,39 @@ async function deleteDoc(){
       document.getElementById('deleteDocId').value = '';
       loadStats();
     } else { log.innerHTML = '<span class="error">&#10007; ' + (d.error || 'Delete failed') + '</span>'; }
+  } catch(e) { log.innerHTML = '<span class="error">&#10007; ' + e.message + '</span>'; }
+}
+
+async function patchMetadata(){
+  const log = document.getElementById('patchLog');
+  const id = document.getElementById('patchDocId').value.trim();
+  if(!id){ log.style.display='block'; log.innerHTML='<span class="error">Document ID required</span>'; return; }
+  const body = {};
+  const title = document.getElementById('patchTitle').value.trim();
+  const category = document.getElementById('patchCategory').value.trim();
+  const sourceType = document.getElementById('patchSourceType').value;
+  const fileName = document.getElementById('patchFileName').value.trim();
+  const tagsRaw = document.getElementById('patchTags').value.trim();
+  const source = document.getElementById('patchSource').value.trim();
+  if(title) body.title = title;
+  if(category) body.category = category;
+  if(sourceType) body.source_type = sourceType;
+  if(fileName) body.file_name = fileName;
+  if(tagsRaw) body.tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+  if(source) body.source = source;
+  if(Object.keys(body).length === 0){ log.style.display='block'; log.innerHTML='<span class="error">Fill in at least one field to update</span>'; return; }
+  log.style.display='block'; log.innerHTML='Updating...';
+  try {
+    const r = await fetch(API_BASE + '/documents/' + encodeURIComponent(id) + '/metadata', {
+      method:'PATCH', headers:{...getHeaders(),'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if(d.success){
+      const fields = (d.fieldsPatched||[]).join(', ');
+      const chunks = d.chunksUpdated || 0;
+      const vec = d.vectorizeUpdated ? ' + Vectorize' : (d.vectorizeWarning ? ' (D1 only — Vectorize: ' + d.vectorizeWarning + ')' : '');
+      log.innerHTML = \`<span class="success">&#10003; Updated \${chunks} chunk\${chunks!==1?'s':''} &middot; Fields: \${fields}\${vec}</span>\`;
+    } else { log.innerHTML = '<span class="error">&#10007; ' + (d.error || 'Update failed') + '</span>'; }
   } catch(e) { log.innerHTML = '<span class="error">&#10007; ' + e.message + '</span>'; }
 }
 

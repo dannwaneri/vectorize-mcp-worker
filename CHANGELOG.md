@@ -7,6 +7,34 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [4.3.0] — 2026-04-20
+
+### Added — PATCH /documents/:id/metadata
+
+- New `PATCH /documents/:id/metadata` endpoint — update metadata on a document and
+  all its chunks without re-embedding or re-chunking.
+- True PATCH semantics: only the fields present in the request body are changed.
+  Fields omitted from the request are left unchanged in both D1 and Vectorize.
+- Updatable fields: `title`, `category`, `source`, `source_type`, `tags`,
+  `mime_type`, `file_name`, `date_created`.
+- Updates D1 in a single batch (one statement per chunk, executed atomically).
+- Re-upserts every chunk to Vectorize with the same stored vectors and the new
+  metadata — using `VECTORIZE.getByIds()` to retrieve existing vectors first.
+  If `getByIds()` is unavailable, D1 is updated and a `vectorizeWarning` is
+  returned in the response (non-fatal).
+- Tenant-scoped: tenants can only patch documents they own. Ownership violation
+  returns 404 (no information leakage).
+- Admin callers (null tenant) can patch any document.
+- Response includes: `documentId`, `chunksUpdated`, `fieldsPatched`, `vectorizeUpdated`,
+  `vectorizeWarning` (if applicable), `updatedAt`.
+- Rate-limited: PATCH requests are included in the sliding-window rate limiter.
+- Dashboard Ingest tab: new "Update Metadata" card with fields for title, category,
+  source type, file name, tags, and source URL.
+- OpenAPI spec updated: `PATCH /documents/{id}/metadata` path with full request/
+  response schema. Version bumped to 4.2.0.
+
+---
+
 ## [4.2.0] — 2026-04-20
 
 ### Changed — Default Embedding Model: qwen3-0.6b (1024d)

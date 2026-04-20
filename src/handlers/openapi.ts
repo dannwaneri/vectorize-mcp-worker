@@ -11,7 +11,7 @@ export function handleOpenApi(request: Request, env: Env): Response {
 		openapi: '3.0.3',
 		info: {
 			title: 'Vectorize MCP Worker',
-			version: '4.1.0',
+			version: '4.2.0',
 			description:
 				'Production-grade Hybrid RAG on Cloudflare Workers. ' +
 				'Vector + BM25 search, cross-encoder reranking, knowledge reflection, ' +
@@ -550,6 +550,72 @@ export function handleOpenApi(request: Request, env: Env): Response {
 							content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, deleted: { type: 'string' } } } } },
 						},
 						'404': { description: 'Document not found or not owned by tenant', content: { 'application/json': { schema: { '$ref': '#/components/schemas/ErrorResponse' } } } },
+					},
+				},
+			},
+			'/documents/{id}/metadata': {
+				patch: {
+					summary: 'Update document metadata',
+					description:
+						'Updates metadata for a document and all its chunks in both D1 and Vectorize — **without re-embedding or re-chunking**. ' +
+						'Only the fields provided in the request body are changed (true PATCH semantics). ' +
+						'Updatable fields: `title`, `category`, `source`, `source_type`, `tags`, `mime_type`, `file_name`, `date_created`. ' +
+						'To change content, re-ingest with the same document ID.',
+					operationId: 'patchDocumentMetadata',
+					tags: ['Ingestion'],
+					parameters: [
+						{
+							name: 'id',
+							in: 'path',
+							required: true,
+							schema: { type: 'string' },
+							description: 'Document ID (the root document ID, not a chunk ID).',
+							example: 'my-doc-001',
+						},
+					],
+					requestBody: {
+						required: true,
+						content: {
+							'application/json': {
+								schema: {
+									type: 'object',
+									minProperties: 1,
+									properties: {
+										title:        { type: 'string',  example: 'Updated Report Title' },
+										category:     { type: 'string',  example: 'finance' },
+										source:       { type: 'string',  example: 'https://example.com/v2.pdf' },
+										source_type:  { type: 'string',  enum: ['text', 'pdf', 'audio', 'video', 'image'], example: 'pdf' },
+										tags:         { type: 'array',   items: { type: 'string' }, example: ['finance', 'q2', 'updated'] },
+										mime_type:    { type: 'string',  example: 'application/pdf' },
+										file_name:    { type: 'string',  example: 'q2-report.pdf' },
+										date_created: { type: 'string',  format: 'date-time', example: '2026-04-01T00:00:00Z' },
+									},
+								},
+							},
+						},
+					},
+					responses: {
+						'200': {
+							description: 'Metadata updated',
+							content: {
+								'application/json': {
+									schema: {
+										type: 'object',
+										properties: {
+											success:          { type: 'boolean' },
+											documentId:       { type: 'string' },
+											chunksUpdated:    { type: 'integer', description: 'Number of chunks (rows) updated.' },
+											fieldsPatched:    { type: 'array', items: { type: 'string' }, description: 'Names of fields that were changed.' },
+											vectorizeUpdated: { type: 'boolean', description: 'Whether Vectorize metadata was also updated.' },
+											vectorizeWarning: { type: 'string',  description: 'Present only if Vectorize update failed (D1 still updated).' },
+											updatedAt:        { type: 'string',  format: 'date-time' },
+										},
+									},
+								},
+							},
+						},
+						'400': { description: 'No patchable fields provided or invalid body', content: { 'application/json': { schema: { '$ref': '#/components/schemas/ErrorResponse' } } } },
+						'404': { description: 'Document not found or not owned by tenant',   content: { 'application/json': { schema: { '$ref': '#/components/schemas/ErrorResponse' } } } },
 					},
 				},
 			},
