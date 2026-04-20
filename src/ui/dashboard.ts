@@ -775,6 +775,7 @@ wrangler d1 create mcp-knowledge-db<button class="code-copy" onclick="copyCode('
     <h2 class="card-title">&#128279; Links</h2>
     <div style="display:flex;flex-direction:column;gap:10px">
       <a href="https://github.com/dannwaneri/vectorize-mcp-worker" target="_blank" style="color:#60a5fa;text-decoration:none;font-size:0.9rem;display:flex;align-items:center;gap:8px">&#128279; GitHub Repository</a>
+      <a href="/openapi.json" target="_blank" style="color:#60a5fa;text-decoration:none;font-size:0.9rem;display:flex;align-items:center;gap:8px">&#128196; OpenAPI Spec <span style="font-size:0.72rem;color:#555;margin-left:4px">— import into Postman, Insomnia, or any API client</span></a>
       <a href="https://github.com/dannwaneri/vectorize-mcp-worker/blob/main/CHANGELOG.md" target="_blank" style="color:#60a5fa;text-decoration:none;font-size:0.9rem;display:flex;align-items:center;gap:8px">&#128196; Changelog</a>
       <a href="https://github.com/dannwaneri/vectorize-mcp-worker/issues" target="_blank" style="color:#60a5fa;text-decoration:none;font-size:0.9rem;display:flex;align-items:center;gap:8px">&#128030; Report an Issue</a>
       <a href="https://developers.cloudflare.com/vectorize/" target="_blank" style="color:#60a5fa;text-decoration:none;font-size:0.9rem;display:flex;align-items:center;gap:8px">&#9729;&#65039; Cloudflare Vectorize Docs</a>

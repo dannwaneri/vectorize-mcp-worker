@@ -20,6 +20,7 @@ import { handleLicenseValidate, handleLicenseCreate, handleLicenseList, handleLi
 import { handleMcpTools, handleMcpCall } from './handlers/mcp';
 
 import { handleCostAnalytics } from './handlers/analytics';
+import { handleOpenApi } from './handlers/openapi';
 
 // Modern MCP server (Streamable HTTP transport, Durable Objects–backed)
 import { VectorizeMcpAgent } from './mcp/agent';
@@ -77,6 +78,7 @@ if (url.pathname === "/" && request.method === "GET") {
 			],
 			endpoints: {
 				"GET /": "API documentation",
+				"GET /openapi.json": "OpenAPI 3.0 spec (machine-readable)",
 				"GET /dashboard": "Interactive playground UI",
 				"GET /llms.txt": "AI search engine info",
 				"GET /test": "Health check",
@@ -115,6 +117,11 @@ if (url.pathname === "/" && request.method === "GET") {
 		}
 	);
 }
+
+		// OpenAPI spec
+		if (url.pathname === "/openapi.json" && request.method === "GET") {
+			return handleOpenApi(request, env);
+		}
 
 		// Dashboard - Interactive Playground
 		if (url.pathname === "/dashboard" && request.method === "GET") {

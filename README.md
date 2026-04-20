@@ -91,6 +91,8 @@ Once deployed, your dashboard lives at:
 https://your-worker.workers.dev/dashboard
 ```
 
+The OpenAPI spec is available at `/openapi.json` — import it directly into Postman, Insomnia, Bruno, or any API client that accepts OpenAPI 3.0.
+
 It's a full playground: search with filters and intent classification debug, ingest documents (drag-and-drop file upload, advanced metadata), upload images, find visually similar images, delete documents, manage licenses, monitor cache hit rate, check which embedding model is active, browse query analytics. A built-in Guide tab walks through every setup step with copyable commands and a live status checker. Not a toy.
 
 ---
@@ -284,11 +286,11 @@ If your data is public knowledge and freshness doesn't matter, the LLM alone is 
 
 ## Roadmap
 
-- [ ] **Batch ingestion** — `POST /ingest/batch` for bulk uploads without N individual round-trips
+- [x] **Batch ingestion** — `POST /ingest/batch`, up to 100 docs, concurrency-controlled, per-doc results
 - [ ] **Incremental re-indexing** — update document metadata without full re-embed
 - [ ] **Webhook support** — trigger ingestion from Notion, GitHub, Slack events
-- [ ] **OpenAPI spec** — auto-generated from route definitions, for client SDK generation
-- [ ] **Test suite** — unit tests for middleware, engines, and the MCP agent
+- [x] **OpenAPI spec** — `GET /openapi.json`, OpenAPI 3.0.3, importable into Postman / Insomnia / Bruno
+- [x] **Test suite** — 73 unit tests across chunking, auth, rate limiting, and batch ingestion
 
 PRs welcome on any of these. If you're running this in production and hitting a specific wall, open an issue and I'll prioritise it.
 
