@@ -6,6 +6,7 @@ import { resolveEmbeddingModel, RERANKER_MODELS, DEFAULT_RERANKER, VISION_MODELS
 
 import { handleSearch, handleClassifyIntent } from './handlers/search';
 import { handleIngest } from './handlers/ingest';
+import { handleIngestBatch } from './handlers/ingestBatch';
 import { handleStats } from './handlers/stats';
 
 
@@ -85,6 +86,7 @@ if (url.pathname === "/" && request.method === "GET") {
 				"POST /classify-intent": "Test intent classification",
 				"GET /analytics/cost": "Cost analytics and projections",
 				"POST /ingest": "Ingest document with auto-chunking",
+				"POST /ingest/batch": "Batch ingest up to 100 documents (concurrency-controlled)",
 				"POST /ingest-image": "Ingest image with AI-generated description",
 				"POST /find-similar-images": "Find visually similar images by uploading a query image",
 				"DELETE /documents/:id": "Delete document",
@@ -171,6 +173,11 @@ if (url.pathname === "/search" && request.method === "POST") {
 		// Ingest Document
 if (url.pathname === "/ingest" && request.method === "POST") {
     return handleIngest(request, env, ctx);
+}
+
+		// Batch Ingest Documents
+if (url.pathname === "/ingest/batch" && request.method === "POST") {
+    return handleIngestBatch(request, env, ctx);
 }
 
 		// Delete Document (tenant-aware)

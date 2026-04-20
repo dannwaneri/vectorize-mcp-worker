@@ -437,6 +437,42 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
 
   <hr class="divider">
 
+  <!-- Batch Ingest -->
+  <div class="card">
+    <h2 class="card-title">&#128230; Batch Ingest</h2>
+    <p style="color:#666;font-size:0.875rem;margin-bottom:16px">Ingest up to 100 documents in one request. Each document needs an <code style="background:#222;color:#a5b4fc;padding:1px 4px;border-radius:3px">id</code> and <code style="background:#222;color:#a5b4fc;padding:1px 4px;border-radius:3px">content</code>.</p>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px">
+      <label style="margin:0">Documents JSON Array</label>
+      <div style="display:flex;gap:6px">
+        <label style="margin:0;font-size:0.75rem;color:#666">Concurrency</label>
+        <select id="batchConcurrency" style="width:auto;margin:0;padding:4px 8px;font-size:0.8rem">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="10">10</option>
+        </select>
+      </div>
+    </div>
+    <textarea id="batchDocs" style="min-height:160px;font-family:monospace;font-size:0.8rem" placeholder='[
+  { "id": "doc-1", "content": "First document text...", "category": "notes" },
+  { "id": "doc-2", "content": "Second document text...", "category": "notes" }
+]'></textarea>
+    <div style="display:flex;gap:8px;margin-bottom:0">
+      <button class="btn" onclick="ingestBatch()" style="flex:1">&#128230; Batch Ingest</button>
+      <button class="btn btn-secondary" onclick="fillBatchExample()" style="flex-shrink:0">Example</button>
+    </div>
+    <div id="batchLog" class="log" style="display:none"></div>
+    <div id="batchResults" style="display:none;margin-top:12px">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+        <div class="stat-card"><div id="batchTotal" style="font-size:1.4rem;font-weight:700;color:#fff">0</div><div style="font-size:0.7rem;color:#555;margin-top:4px">Total</div></div>
+        <div class="stat-card"><div id="batchSucceeded" style="font-size:1.4rem;font-weight:700;color:#22c55e">0</div><div style="font-size:0.7rem;color:#555;margin-top:4px">Succeeded</div></div>
+        <div class="stat-card"><div id="batchFailed" style="font-size:1.4rem;font-weight:700;color:#e05a4a">0</div><div style="font-size:0.7rem;color:#555;margin-top:4px">Failed</div></div>
+      </div>
+      <div id="batchDocResults" style="font-size:0.78rem"></div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
   <!-- Delete Document -->
   <div class="card">
     <h2 class="card-title" style="color:#f87171">&#128465;&#65039; Delete Document</h2>
@@ -918,6 +954,46 @@ function toggleModelsPanel() {
   body.style.display = isOpen ? 'none' : 'block';
   btn.innerHTML = isOpen ? '&#9660; Details' : '&#9650; Hide';
   if (!isOpen) { loadStats(); }
+}
+
+function fillBatchExample() {
+  document.getElementById('batchDocs').value = JSON.stringify([
+    { "id": "batch-doc-1", "content": "Cloudflare Workers run JavaScript at the network edge, giving you sub-millisecond response times globally without managing servers.", "category": "notes", "source_type": "text" },
+    { "id": "batch-doc-2", "content": "Vectorize is Cloudflare's vector database for semantic search. It supports cosine similarity and stores metadata alongside each vector.", "category": "notes", "source_type": "text" },
+    { "id": "batch-doc-3", "content": "Hybrid RAG combines vector similarity search with BM25 keyword search, then fuses results using Reciprocal Rank Fusion for better retrieval accuracy.", "category": "notes", "source_type": "text" }
+  ], null, 2);
+}
+
+async function ingestBatch() {
+  const log = document.getElementById('batchLog');
+  const resultsEl = document.getElementById('batchResults');
+  log.style.display = 'block'; log.innerHTML = 'Sending batch...';
+  resultsEl.style.display = 'none';
+  const raw = document.getElementById('batchDocs').value.trim();
+  const concurrency = parseInt(document.getElementById('batchConcurrency').value) || 5;
+  if (!raw) { log.innerHTML = '<span class="error">Paste a JSON array of documents first</span>'; return; }
+  let docs;
+  try { docs = JSON.parse(raw); } catch(e) { log.innerHTML = '<span class="error">Invalid JSON: ' + e.message + '</span>'; return; }
+  if (!Array.isArray(docs)) { log.innerHTML = '<span class="error">Expected a JSON array [ {...}, {...} ]</span>'; return; }
+  try {
+    const r = await fetch(API_BASE + '/ingest/batch', { method: 'POST', headers: getHeaders(), body: JSON.stringify({ documents: docs, concurrency }) });
+    const d = await r.json();
+    if (!r.ok) { log.innerHTML = '<span class="error">&#10007; ' + (d.error || r.statusText) + '</span>'; return; }
+    log.innerHTML = '<span class="success">&#10003; Batch complete</span> — ' + d.performance.totalTime + ' total, ~' + d.performance.avgTimePerDoc + '/doc';
+    document.getElementById('batchTotal').textContent = d.total;
+    document.getElementById('batchSucceeded').textContent = d.succeeded;
+    document.getElementById('batchFailed').textContent = d.failed;
+    const docResultsEl = document.getElementById('batchDocResults');
+    docResultsEl.innerHTML = d.results.map(r =>
+      '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1e1e1e">' +
+      '<span style="color:' + (r.success ? '#22c55e' : '#ef4444') + ';font-size:0.85rem">' + (r.success ? '✓' : '✗') + '</span>' +
+      '<span style="font-family:monospace;color:#ccc;font-size:0.8rem;flex:1">' + r.id + '</span>' +
+      (r.success ? '<span style="color:#555;font-size:0.72rem">' + r.chunks + ' chunks · ' + (r.performance?.totalTime || '') + '</span>' : '<span style="color:#ef4444;font-size:0.72rem">' + r.error + '</span>') +
+      '</div>'
+    ).join('');
+    resultsEl.style.display = 'block';
+    if (d.succeeded > 0) loadStats();
+  } catch(e) { log.innerHTML = '<span class="error">&#10007; ' + e.message + '</span>'; }
 }
 
 async function ingestDoc(){
