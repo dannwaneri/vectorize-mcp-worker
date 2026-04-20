@@ -597,18 +597,26 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
     </div>
     <div id="modelsPanelBody" style="display:none">
       <div id="activeModelBanner" style="padding:10px 14px;background:#0c1a2e;border:1px solid #1e3a5f;border-radius:8px;font-size:0.8rem;color:#a5b4fc;margin-bottom:16px">Loading active model...</div>
+      <div style="font-size:0.75rem;font-weight:600;color:#666;margin-bottom:8px">Embedding Models <span style="color:#555;font-weight:400">(EMBEDDING_MODEL)</span></div>
       <table class="model-table">
         <thead><tr><th>Key</th><th>Model</th><th>Dims</th><th>Note</th></tr></thead>
         <tbody id="embeddingModelRows">
-          <tr><td><code>bge-small</code></td><td><code>@cf/baai/bge-small-en-v1.5</code></td><td>384</td><td style="color:#666">Default. Fast, backward-compatible.</td></tr>
+          <tr><td><code>qwen3-0.6b</code></td><td><code>@cf/qwen/qwen3-embedding-0.6b</code></td><td>1024</td><td style="color:#e05a4a;font-weight:600">&#9733; Default 2026. Best retrieval quality.</td></tr>
           <tr><td><code>bge-m3</code></td><td><code>@cf/baai/bge-m3</code></td><td>1024</td><td style="color:#666">Multilingual. Needs 1024d index.</td></tr>
-          <tr><td><code>qwen3-0.6b</code></td><td><code>@cf/qwen/qwen3-embedding-0.6b</code></td><td>1024</td><td style="color:#e05a4a;font-weight:600">&#9733; Best 2026. Needs 1024d index.</td></tr>
+          <tr><td><code>bge-small</code></td><td><code>@cf/baai/bge-small-en-v1.5</code></td><td>384</td><td style="color:#666">Legacy. Set EMBEDDING_MODEL="bge-small" to keep existing 384d index.</td></tr>
+        </tbody>
+      </table>
+      <div style="font-size:0.75rem;font-weight:600;color:#666;margin:14px 0 8px">Reflection &amp; Synthesis Models <span style="color:#555;font-weight:400">(REFLECTION_MODEL)</span></div>
+      <table class="model-table">
+        <thead><tr><th>Key</th><th>Model</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr><td><code>kimi-k2.5</code></td><td><code>@cf/moonshot/kimi-k2.5</code></td><td style="color:#e05a4a;font-weight:600">&#9733; Default. Best multi-doc reasoning.</td></tr>
+          <tr><td><code>llama-3.2-3b</code></td><td><code>@cf/meta/llama-3.2-3b-instruct</code></td><td style="color:#666">Lower cost, lower quality.</td></tr>
         </tbody>
       </table>
       <div style="margin-top:12px;padding:10px 14px;background:#111;border-left:3px solid #e05a4a;border-radius:4px;font-size:0.75rem;color:#666;line-height:1.6">
-        <strong style="color:#ccc">To switch model:</strong> create a new 1024d Vectorize index, update
-        <code style="background:#222;padding:1px 4px;border-radius:3px;color:#a5b4fc">wrangler.toml</code> with
-        <code style="background:#222;padding:1px 4px;border-radius:3px;color:#a5b4fc">EMBEDDING_MODEL = "qwen3-0.6b"</code>, then re-ingest all documents.
+        <strong style="color:#ccc">Vision &amp; OCR:</strong> always uses
+        <code style="background:#222;padding:1px 4px;border-radius:3px;color:#a5b4fc">@cf/meta/llama-4-scout-17b-16e-instruct</code> — best native multimodal on Workers AI.
       </div>
     </div>
   </div>

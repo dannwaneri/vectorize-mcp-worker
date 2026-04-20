@@ -17,7 +17,7 @@
  */
 import { Document } from '../types/document';
 import { Env } from '../types/env';
-import { resolveEmbeddingModel, ROUTING_MODELS, DEFAULT_ROUTING } from '../config/models';
+import { resolveEmbeddingModel, resolveReflectionModel } from '../config/models';
 
 // One strong match is enough to produce a useful reflection.
 // Set to 2 if you want more conservative synthesis.
@@ -115,7 +115,8 @@ export class ReflectionEngine {
 				`3. The most important question that remains unanswered after combining all sources.\n\n` +
 				`Hard rules: under 70 words total. No "The document". No "This shows". Facts only.`;
 
-			const llmResp = await env.AI.run(ROUTING_MODELS[DEFAULT_ROUTING].id as any, {
+			const reflModel = resolveReflectionModel(env.REFLECTION_MODEL);
+			const llmResp = await env.AI.run(reflModel.id as any, {
 				messages: [{ role: 'user', content: prompt }],
 				max_tokens: 180,
 			});
@@ -288,7 +289,8 @@ export class ReflectionEngine {
 				`3. Identifies the most persistent open question or gap that keeps appearing\n\n` +
 				`Be precise. Prioritise specificity over coverage. This summary will be retrieved to answer user questions.`;
 
-			const llmResp = await env.AI.run(ROUTING_MODELS[DEFAULT_ROUTING].id as any, {
+			const reflModel = resolveReflectionModel(env.REFLECTION_MODEL);
+			const llmResp = await env.AI.run(reflModel.id as any, {
 				messages: [{ role: 'user', content: prompt }],
 				max_tokens: 320,
 			});

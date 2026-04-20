@@ -48,7 +48,7 @@ The second reason this exists: most RAG tutorials hand you a 50-line Python scri
 
 **Query Analytics** — Every query recorded: latency per stage, cache hit/miss, filters used. Surfaces through `/stats` and the built-in dashboard. No separate logging service.
 
-**Three Embedding Models** — `bge-small` (384d, fast, default), `bge-m3` (1024d, multilingual), `qwen3-0.6b` (1024d, best retrieval quality 2026). One env var to switch.
+**Three Embedding Models** — `qwen3-0.6b` (1024d, best retrieval quality 2026, default), `bge-m3` (1024d, multilingual), `bge-small` (384d, legacy). One env var to switch: `EMBEDDING_MODEL`.
 
 ---
 
@@ -59,7 +59,7 @@ Standard RAG retrieves documents. It doesn't learn. Every query goes in cold —
 The reflection layer changes that. Every time you ingest a document:
 
 1. The system finds the most semantically related documents already in the index
-2. Llama 3.2 synthesises a three-sentence insight: what the new document adds, how it connects to existing knowledge, and what gap remains
+2. Kimi K2.5 synthesises a three-sentence insight: what the new document adds, how it connects to existing knowledge, and what gap remains
 3. That reflection is embedded, stored with `doc_type=reflection`, and given a 1.5× ranking boost in search results
 4. After every 3 new documents, reflections are consolidated into a `doc_type=summary` — a compressed view of what the knowledge base has learned
 
@@ -117,11 +117,12 @@ npm install
 ### 2. Create your Vectorize index
 
 ```bash
-# Default: bge-small, 384 dimensions
-wrangler vectorize create mcp-knowledge-base --dimensions=384 --metric=cosine
-
-# Better quality: qwen3-0.6b or bge-m3, 1024 dimensions
+# Default (recommended): qwen3-0.6b, 1024 dimensions
 wrangler vectorize create mcp-knowledge-base --dimensions=1024 --metric=cosine
+
+# Legacy (existing 384d deployments): bge-small
+# wrangler vectorize create mcp-knowledge-base --dimensions=384 --metric=cosine
+# Then set EMBEDDING_MODEL=bge-small in wrangler.toml [vars]
 ```
 
 ### 3. Create your D1 database
@@ -243,15 +244,16 @@ Everything runs on Cloudflare. No external services. No third-party billing. No 
 | **Keyword / metadata store** | Cloudflare D1 (SQLite) |
 | **HTTP cache** | Cloudflare Cache API |
 | **MCP session state** | Cloudflare Durable Objects |
-| **Embedding (default)** | `@cf/baai/bge-small-en-v1.5` — 384d |
-| **Embedding (best quality)** | `@cf/qwen/qwen3-embedding-0.6b` — 1024d |
+| **Embedding (default)** | `@cf/qwen/qwen3-embedding-0.6b` — 1024d ★ Best 2026 |
+| **Embedding (legacy / 384d)** | `@cf/baai/bge-small-en-v1.5` — set `EMBEDDING_MODEL=bge-small` |
 | **Embedding (multilingual)** | `@cf/baai/bge-m3` — 1024d |
 | **Reranker** | `@cf/baai/bge-reranker-base` |
 | **Vision / OCR** | `@cf/meta/llama-4-scout-17b-16e-instruct` |
-| **Query routing + reflection** | `@cf/meta/llama-3.2-3b-instruct` |
+| **Knowledge reflection / synthesis** | `@cf/moonshot/kimi-k2.5` ★ Default — set `REFLECTION_MODEL` to override |
+| **Query routing** | `@cf/meta/llama-3.2-3b-instruct` |
 | **MCP SDK** | `agents` v0.10 + `@modelcontextprotocol/sdk` v1.29 |
 
-Switching embedding models is one env var. Switching from `bge-small` (384d) to `qwen3-0.6b` (1024d) requires a new Vectorize index and re-ingest — no code changes.
+Switching embedding models is one env var (`EMBEDDING_MODEL`). Switching reflection quality vs cost is one env var (`REFLECTION_MODEL=llama-3.2-3b` for lower cost). Switching from `bge-small` (384d) to `qwen3-0.6b` (1024d) requires a new Vectorize index and re-ingest — no code changes.
 
 ---
 

@@ -1,6 +1,6 @@
 import { Env } from '../types/env';
 import { corsHeaders } from '../middleware/cors';
-import { resolveEmbeddingModel, RERANKER_MODELS, DEFAULT_RERANKER, VISION_MODELS, DEFAULT_VISION, ROUTING_MODELS, DEFAULT_ROUTING } from '../config/models';
+import { resolveEmbeddingModel, resolveReflectionModel, RERANKER_MODELS, DEFAULT_RERANKER, VISION_MODELS, DEFAULT_VISION, ROUTING_MODELS, DEFAULT_ROUTING } from '../config/models';
 import { analytics } from '../analytics/store';
 
 export async function handleStats(request: Request, env: Env): Promise<Response> {
@@ -13,6 +13,7 @@ export async function handleStats(request: Request, env: Env): Promise<Response>
 		}
 
 		const embModel = resolveEmbeddingModel(env.EMBEDDING_MODEL);
+		const reflModel = resolveReflectionModel(env.REFLECTION_MODEL);
 
 		return new Response(
 			JSON.stringify({
@@ -22,11 +23,13 @@ export async function handleStats(request: Request, env: Env): Promise<Response>
 				dimensions: embModel.dimensions,
 				models: {
 					embedding: embModel.id,
-					embeddingKey: env.EMBEDDING_MODEL || 'bge-small',
+					embeddingKey: env.EMBEDDING_MODEL || 'qwen3-0.6b',
 					embeddingDimensions: embModel.dimensions,
 					reranker: RERANKER_MODELS[DEFAULT_RERANKER].id,
 					vision: VISION_MODELS[DEFAULT_VISION].id,
 					routing: ROUTING_MODELS[DEFAULT_ROUTING].id,
+					reflection: reflModel.id,
+					reflectionKey: env.REFLECTION_MODEL || 'kimi-k2.5',
 				},
 				analytics: analytics.getSummary(),
 			}),

@@ -7,6 +7,37 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [4.2.0] — 2026-04-20
+
+### Changed — Default Embedding Model: qwen3-0.6b (1024d)
+
+- `qwen3-0.6b` (`@cf/qwen/qwen3-embedding-0.6b`, 1024d) is now the default embedding
+  model for new deployments. Top retrieval quality on standard benchmarks for 2026.
+- `bge-small` (384d) remains fully supported for existing deployments via
+  `EMBEDDING_MODEL=bge-small` in `wrangler.toml [vars]`.
+- Dashboard AI Models panel reordered: qwen3-0.6b listed first with "★ Default" badge.
+
+### Added — Kimi K2.5 for Knowledge Reflection
+
+- `@cf/moonshot/kimi-k2.5` replaces `llama-3.2-3b` as the default model for
+  knowledge reflection synthesis and multi-document consolidation.
+- Kimi K2.5 has significantly better multi-document reasoning and structured output
+  than the smaller routing model that was previously handling synthesis.
+- New `REFLECTION_MODEL` env var selects cost vs quality:
+  - `kimi-k2.5` (default) — best synthesis quality
+  - `llama-3.2-3b` — lower cost, higher throughput
+- `resolveReflectionModel()` helper in `src/config/models.ts` resolves the active
+  model from the env var; falls back to Kimi K2.5 if unset or unrecognised.
+- `REFLECTION_MODELS` registry added to `src/config/models.ts` with both entries.
+- `/stats` response now includes `models.reflection` (full model ID) and
+  `models.reflectionKey` (env var value for display).
+- Dashboard Setup tab AI Models section split into two tables:
+  - Embedding Models (qwen3-0.6b first, with ★ Default badge)
+  - Reflection & Synthesis Models (Kimi K2.5 and llama-3.2-3b; notes on Vision/OCR)
+- `src/types/env.ts` — `REFLECTION_MODEL?: string` env var documented and typed.
+
+---
+
 ## [4.1.0] — 2026-04-16
 
 ### Added — Dashboard: Delete, Find Similar, Intent Debug, License Management, Guide Tab

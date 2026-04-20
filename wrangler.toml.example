@@ -5,7 +5,9 @@ compatibility_date = "2025-12-02"
 [ai]
 binding = "AI"
 
-# RAG Index (384 dimensions - BGE text embeddings)
+# RAG Index — must match your embedding model dimensions:
+#   qwen3-0.6b (default, recommended): --dimensions=1024
+#   bge-small  (legacy, 384d):         --dimensions=384
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "mcp-knowledge-base"
@@ -22,6 +24,16 @@ service = "multimodal-pro-worker"
 
 [observability]
 enabled = true
+
+[vars]
+# Embedding model key. Default: "qwen3-0.6b" (1024d, best retrieval quality 2026).
+# Set to "bge-small" to keep an existing 384d deployment.
+# Set to "bge-m3" for multilingual support (1024d).
+# EMBEDDING_MODEL = "qwen3-0.6b"
+
+# Reflection / synthesis model. Default: "kimi-k2.5" (best multi-document reasoning).
+# Set to "llama-3.2-3b" for lower cost at the expense of synthesis quality.
+# REFLECTION_MODEL = "kimi-k2.5"
 
 # Set your API key using: wrangler secret put API_KEY
 # Never commit your actual API_KEY to git

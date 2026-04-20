@@ -28,4 +28,10 @@ export interface Env {
 	 * Default: 10000 (10 seconds). Set via wrangler.toml [vars].
 	 */
 	RATE_LIMIT_WINDOW_MS?: string;
+	/**
+	 * LLM used for knowledge reflection synthesis and multi-document consolidation.
+	 * Default: "kimi-k2.5" (Kimi K2.5 — best multi-document reasoning on Workers AI).
+	 * Set to "llama-3.2-3b" for lower cost at the expense of synthesis quality.
+	 */
+	REFLECTION_MODEL?: string;
 }
