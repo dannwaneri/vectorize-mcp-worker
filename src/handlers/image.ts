@@ -3,6 +3,7 @@ import { IngestionEngine } from '../engines/ingestion';
 import { HybridSearchEngine } from '../engines/hybrid';
 import { corsHeaders } from '../middleware/cors';
 import { resolveTenant, injectTenantFilter } from '../middleware/tenant';
+import { VISION_MODELS, DEFAULT_VISION } from '../config/models';
 
 const ingestion = new IngestionEngine();
 const hybridSearch = new HybridSearchEngine();
@@ -111,6 +112,55 @@ export async function handleFindSimilarImages(request: Request, env: Env): Promi
 			JSON.stringify({
 				error: error instanceof Error ? error.message : 'Unknown error',
 			}),
+			{ status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders() } }
+		);
+	}
+}
+
+export async function handleAnalyzeImage(request: Request, env: Env): Promise<Response> {
+	try {
+		const { url, prompt } = await request.json<{ url: string; prompt?: string }>();
+		if (!url) {
+			return new Response(
+				JSON.stringify({ error: 'Missing url' }),
+				{ status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders() } }
+			);
+		}
+
+		const imgResponse = await fetch(url);
+		if (!imgResponse.ok) {
+			return new Response(
+				JSON.stringify({ error: `Failed to fetch image: ${imgResponse.status}` }),
+				{ status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders() } }
+			);
+		}
+		const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
+		const imageBuffer = await imgResponse.arrayBuffer();
+		const base64 = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+
+		const visionModel = VISION_MODELS[DEFAULT_VISION].id;
+		const result = await (env.AI as any).run(visionModel, {
+			messages: [
+				{
+					role: 'user',
+					content: [
+						{ type: 'image_url', image_url: { url: `data:${contentType};base64,${base64}` } },
+						{ type: 'text', text: prompt || 'Describe this image concisely for search indexing. Include visible text, main subjects, context, and mood.' },
+					],
+				},
+			],
+			max_tokens: 300,
+		});
+
+		const description: string = result?.response ?? result?.choices?.[0]?.message?.content ?? '';
+
+		return new Response(
+			JSON.stringify({ description }),
+			{ headers: { 'Content-Type': 'application/json', ...corsHeaders() } }
+		);
+	} catch (error) {
+		return new Response(
+			JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
 			{ status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders() } }
 		);
 	}

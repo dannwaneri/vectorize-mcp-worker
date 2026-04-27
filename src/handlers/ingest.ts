@@ -68,3 +68,63 @@ export async function handleIngest(
 		);
 	}
 }
+
+export async function handleReflectBatch(
+	request: Request,
+	env: Env,
+): Promise<Response> {
+	try {
+		if (!env.DB) {
+			return new Response(JSON.stringify({ error: 'D1 not available' }), {
+				status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+			});
+		}
+
+		const body = await request.json<{ limit?: number }>().catch(() => ({}));
+		const cap = Math.min(Math.max(1, body.limit ?? 20), 100);
+		const tenantId = resolveTenant(request, env);
+
+		const stmt = tenantId
+			? env.DB.prepare(
+				`SELECT id, content, title, category, source, tenant_id FROM documents
+				 WHERE doc_type = 'raw' AND chunk_index = 0 AND last_reflected_at IS NULL AND tenant_id = ?
+				 ORDER BY RANDOM() LIMIT ?`,
+			  ).bind(tenantId, cap)
+			: env.DB.prepare(
+				`SELECT id, content, title, category, source, tenant_id FROM documents
+				 WHERE doc_type = 'raw' AND chunk_index = 0 AND last_reflected_at IS NULL AND tenant_id IS NULL
+				 ORDER BY RANDOM() LIMIT ?`,
+			  ).bind(cap);
+
+		const rows = await stmt.all<{ id: string; content: string; title: string; category: string; source: string; tenant_id: string | null }>();
+		const docs = rows.results ?? [];
+
+		if (docs.length === 0) {
+			return new Response(JSON.stringify({ reflected: 0, message: 'All documents already reflected' }), {
+				headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+			});
+		}
+
+		let reflected = 0;
+		let failed = 0;
+		for (const doc of docs) {
+			try {
+				await reflectionEngine.reflect(doc as unknown as Document, env);
+				reflected++;
+			} catch {
+				failed++;
+			}
+		}
+
+		return new Response(
+			JSON.stringify({ reflected, failed, sampled: docs.length }),
+			{ headers: { 'Content-Type': 'application/json', ...corsHeaders() } },
+		);
+	} catch (error) {
+		return new Response(
+			JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+			{ status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders() } },
+		);
+	}
+}
+

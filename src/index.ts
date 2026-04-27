@@ -5,12 +5,12 @@ import { corsHeaders, handleCorsPrelight } from './middleware/cors';
 import { resolveEmbeddingModel, RERANKER_MODELS, DEFAULT_RERANKER, VISION_MODELS, DEFAULT_VISION, ROUTING_MODELS, DEFAULT_ROUTING } from './config/models';
 
 import { handleSearch, handleClassifyIntent } from './handlers/search';
-import { handleIngest } from './handlers/ingest';
+import { handleIngest, handleReflectBatch } from './handlers/ingest';
 import { handleIngestBatch } from './handlers/ingestBatch';
 import { handleStats } from './handlers/stats';
 
 
-import { handleIngestImage, handleFindSimilarImages } from './handlers/image';
+import { handleIngestImage, handleFindSimilarImages, handleAnalyzeImage } from './handlers/image';
 
 import  { getDashboardHTML } from './ui/dashboard';
 import { getLlmsTxt } from './ui/llmsTxt';
@@ -189,6 +189,11 @@ if (url.pathname === "/ingest/batch" && request.method === "POST") {
     return handleIngestBatch(request, env, ctx);
 }
 
+		// Generate reflections for a random sample of un-reflected documents
+		if (url.pathname === "/reflect/batch" && request.method === "POST") {
+			return handleReflectBatch(request, env);
+		}
+
 		// Delete Document (tenant-aware)
 		if (url.pathname.startsWith("/documents/") && request.method === "DELETE") {
 			const docId = url.pathname.replace("/documents/", "");
@@ -252,6 +257,11 @@ if (url.pathname === "/ingest-image" && request.method === "POST") {
 // Find similar images by uploading an image
 if (url.pathname === "/find-similar-images" && request.method === "POST") {
     return handleFindSimilarImages(request, env);
+}
+
+// Analyze image by URL — returns AI-generated description
+if (url.pathname === "/analyze-image" && request.method === "POST") {
+    return handleAnalyzeImage(request, env);
 }
 
 if (url.pathname === "/classify-intent" && request.method === "POST") {
