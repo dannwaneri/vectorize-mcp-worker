@@ -289,6 +289,8 @@ If your data is public knowledge and freshness doesn't matter, the LLM alone is 
 ## Roadmap
 
 - [x] **Batch ingestion** — `POST /ingest/batch`, up to 100 docs, concurrency-controlled, per-doc results
+- [x] **Image URL analysis** — `POST /analyze-image`, fetch any public image URL and return an AI description (Llama 4 Scout) without ingesting — useful for enriching external content before indexing
+- [x] **Reflection backfill** — `POST /reflect/batch`, sample N un-reflected raw documents and generate knowledge reflections on demand — run periodically to build up synthesis without blocking ingest
 - [ ] **Incremental re-indexing** — update document metadata without full re-embed
 - [ ] **Webhook support** — trigger ingestion from Notion, GitHub, Slack events
 - [x] **OpenAPI spec** — `GET /openapi.json`, OpenAPI 3.0.3, importable into Postman / Insomnia / Bruno
