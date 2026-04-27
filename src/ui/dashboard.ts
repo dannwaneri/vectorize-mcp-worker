@@ -735,6 +735,31 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
   </div>
 
   <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div>
+        <h2 class="card-title" style="margin-bottom:4px">&#129504; Knowledge Reflection</h2>
+        <p style="color:#888;font-size:0.8rem">Sample un-reflected documents and synthesise insights with Llama. Run periodically to build up cross-document knowledge.</p>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;margin-bottom:12px">
+      <div style="flex:1">
+        <label>Documents per batch</label>
+        <input type="number" id="reflectBatch" value="20" min="1" max="100">
+      </div>
+      <div style="flex:1">
+        <label>Batches to run</label>
+        <input type="number" id="reflectRuns" value="1" min="1" max="20">
+      </div>
+    </div>
+    <button class="btn" onclick="runReflect()" id="reflectBtn">Run Reflection</button>
+    <div id="reflectResult" style="margin-top:12px;display:none">
+      <div style="background:#111;border:1px solid #262626;border-radius:8px;padding:12px;font-size:0.85rem">
+        <span id="reflectStatus" style="color:#888"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
     <h2 class="card-title">&#128295; Setup Your Own Instance</h2>
 
     <div class="guide-step">
@@ -1271,6 +1296,37 @@ async function revokeLicense(){
     if(d.success||r.ok) { log.innerHTML = '<span class="success">&#10003; License revoked</span>'; document.getElementById('licenseKeyRevoke').value=''; }
     else log.innerHTML = '<span class="error">&#10007; ' + (d.error||'Failed') + '</span>';
   } catch(e) { log.innerHTML = '<span class="error">&#10007; ' + e.message + '</span>'; }
+}
+
+async function runReflect(){
+  const batch = parseInt(document.getElementById('reflectBatch').value) || 20;
+  const runs = parseInt(document.getElementById('reflectRuns').value) || 1;
+  const btn = document.getElementById('reflectBtn');
+  const resultEl = document.getElementById('reflectResult');
+  const statusEl = document.getElementById('reflectStatus');
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  resultEl.style.display = 'block';
+  statusEl.style.color = '#888';
+  statusEl.textContent = 'Starting...';
+  let totalReflected = 0, totalFailed = 0;
+  try {
+    for (let i = 0; i < runs; i++) {
+      statusEl.textContent = 'Batch ' + (i+1) + ' of ' + runs + '...';
+      const r = await fetch(API_BASE + '/reflect/batch', { method: 'POST', headers: getHeaders(), body: JSON.stringify({ limit: batch }) });
+      const d = await r.json();
+      if (d.message === 'All documents already reflected') { statusEl.textContent = 'All documents already reflected.'; break; }
+      totalReflected += d.reflected || 0;
+      totalFailed += d.failed || 0;
+    }
+    statusEl.style.color = '#4ade80';
+    statusEl.textContent = '✓ Done — ' + totalReflected + ' reflected, ' + totalFailed + ' failed';
+  } catch(e) {
+    statusEl.style.color = '#f87171';
+    statusEl.textContent = '✗ ' + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Run Reflection';
 }
 
 async function checkSetupStatus(){
