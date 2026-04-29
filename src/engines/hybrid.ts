@@ -110,6 +110,7 @@ export class HybridSearchEngine {
 			isImage: m.metadata?.isImage as boolean || false,
 			doc_type: m.metadata?.doc_type as string | undefined,
 			reflection_score: m.metadata?.reflection_score as number | undefined,
+			metadata: m.metadata,
 		}));
 
 		// Keyword search (if D1 available)

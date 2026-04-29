@@ -18,6 +18,8 @@ export interface Document {
 	last_reflected_at?: string;
 	/** Increments each time a reflection is regenerated for this document */
 	reflection_version?: number;
+	/** Arbitrary caller-supplied metadata (e.g. author, likes, url) stored verbatim in the vector index */
+	metadata?: Record<string, unknown>;
 }
 
 export interface ImageDocument extends Document {

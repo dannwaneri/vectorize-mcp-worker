@@ -54,6 +54,9 @@ export class IngestionEngine {
 			}
 
 			const meta: VectorMetadata = {
+				// Spread custom metadata from the document first (e.g. author, likes, url)
+				// so that system fields below take precedence if there's a conflict.
+				...(doc.metadata && typeof doc.metadata === 'object' ? doc.metadata : {}),
 				content: chunk.content,
 				category: doc.category || '',
 				parentId: chunk.parentId,

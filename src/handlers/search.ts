@@ -229,6 +229,7 @@ export async function handleSearch(
           score: r.rrfScore || r.score,
           content: r.content,
           category: r.category,
+          metadata: (r as any).metadata,
           ...(r.doc_type ? { doc_type: r.doc_type } : {}),
           ...(r.doc_type === 'reflection' ? { label: 'Synthesized Insight', is_insight: true  } : {}),
           ...(r.doc_type === 'summary'    ? { label: 'Knowledge Summary',   is_insight: true  } : {}),
