@@ -927,8 +927,9 @@ function isGemma4(r) {
 }
 
 function renderReflection(r) {
-  const text = (r.text ?? r.content ?? '').trim();
-  const date = r.metadata?.created_at ? new Date(r.metadata.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
+  const text = (r.content ?? r.text ?? '').trim();
+  const rawDate = r.created_at ?? r.metadata?.created_at ?? '';
+  const date = rawDate ? new Date(rawDate).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
   return \`<div style="background:#111;border:1px solid #262626;border-radius:8px;padding:16px;margin-bottom:12px">
     <p style="color:#e0e0e0;font-size:0.9rem;line-height:1.6;margin:0 0 8px">\${text}</p>
     \${date ? \`<span style="color:#555;font-size:0.75rem">Gemma 4 · \${date}</span>\` : ''}
@@ -936,19 +937,17 @@ function renderReflection(r) {
 }
 
 async function loadReflections() {
-  const query = document.getElementById('reflectQuery').value.trim() || 'insight synthesis knowledge connection';
+  const query = document.getElementById('reflectQuery').value.trim();
   const log = document.getElementById('reflectionsLog');
   const results = document.getElementById('reflectionsResults');
   log.style.display = 'block';
   results.innerHTML = '<p style="color:#666;font-size:0.875rem">Loading...</p>';
   try {
-    const res = await fetch('/search', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ query, topK: 50, includeMetadata: true, rerank: false }),
-    });
+    const params = new URLSearchParams({ since: GEMMA4_CUTOVER, limit: '20' });
+    if (query) params.set('q', query);
+    const res = await fetch(\`/reflections?\${params}\`, { headers: getHeaders() });
     const data = await res.json();
-    const items = (data.results ?? data.matches ?? []).filter(isGemma4).map(renderReflection);
+    const items = (data.results ?? []).map(renderReflection);
     if (!items.length) {
       results.innerHTML = '<p style="color:#666;font-size:0.875rem">No Gemma 4 reflections found on that topic yet.</p>';
       return;
@@ -961,20 +960,15 @@ async function loadReflections() {
 
 async function loadRandomReflection() {
   document.getElementById('reflectQuery').value = '';
-  const seeds = ['insight','pattern','connection','synthesis','future','technology','Nigeria','society','AI','football','money','work'];
-  const seed = seeds[Math.floor(Math.random() * seeds.length)];
   const log = document.getElementById('reflectionsLog');
   const results = document.getElementById('reflectionsResults');
   log.style.display = 'block';
   results.innerHTML = '<p style="color:#666;font-size:0.875rem">Loading...</p>';
   try {
-    const res = await fetch('/search', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ query: seed, topK: 50, includeMetadata: true, rerank: false }),
-    });
+    const params = new URLSearchParams({ since: GEMMA4_CUTOVER, limit: '50' });
+    const res = await fetch(\`/reflections?\${params}\`, { headers: getHeaders() });
     const data = await res.json();
-    const items = (data.results ?? data.matches ?? []).filter(isGemma4);
+    const items = data.results ?? [];
     if (!items.length) {
       results.innerHTML = '<p style="color:#666;font-size:0.875rem">No Gemma 4 reflections found yet.</p>';
       return;

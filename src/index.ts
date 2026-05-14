@@ -281,6 +281,21 @@ if (url.pathname === "/benchmark/results" && request.method === "GET") {
 	return handleBenchmarkResults(request, env);
 }
 
+if (url.pathname === "/reflections" && request.method === "GET") {
+	const q = url.searchParams.get("q") || "";
+	const since = url.searchParams.get("since") || "2026-05-10";
+	const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 50);
+	const search = q ? `%${q}%` : "%";
+	const rows = await (env as any).DB.prepare(
+		`SELECT content, created_at FROM documents
+		 WHERE doc_type = 'reflection' AND created_at >= ? AND content LIKE ? AND length(content) >= 80
+		 ORDER BY created_at DESC LIMIT ?`
+	).bind(since, search, limit).all();
+	return new Response(JSON.stringify({ results: rows.results }), {
+		headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+	});
+}
+
 // 404 for unknown routes
 		return new Response(
 			JSON.stringify({
