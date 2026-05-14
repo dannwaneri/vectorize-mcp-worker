@@ -17,9 +17,9 @@
  * REFLECTION MODEL — REFLECTION_MODEL env var
  * --------------------------------------------
  * Controls the LLM used for knowledge reflection synthesis and multi-document
- * consolidation. Defaults to Kimi K2.5 (excellent reasoning + tool-calling).
+ * consolidation. Defaults to Gemma 4 MoE (edge-native, 4B active params).
  * Set REFLECTION_MODEL = "llama-3.2-3b" to reduce cost at the expense of
- * synthesis quality.
+ * synthesis quality. kimi-k2.5 is deprecated May 30 2026.
  */
 
 export const EMBEDDING_MODELS = {
