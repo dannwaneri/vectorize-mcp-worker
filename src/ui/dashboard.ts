@@ -649,7 +649,8 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
       <table class="model-table">
         <thead><tr><th>Key</th><th>Model</th><th>Note</th></tr></thead>
         <tbody>
-          <tr><td><code>kimi-k2.5</code></td><td><code>@cf/moonshot/kimi-k2.5</code></td><td style="color:#e05a4a;font-weight:600">&#9733; Default. Best multi-doc reasoning.</td></tr>
+          <tr><td><code>gemma-4</code></td><td><code>@cf/google/gemma-4-26b-a4b-it</code></td><td style="color:#34a853;font-weight:600">&#9733; Default. 4B active params (MoE), edge-native, no external hop.</td></tr>
+          <tr><td><code>kimi-k2.5</code></td><td><code>@cf/moonshotai/kimi-k2.5</code></td><td style="color:#e05a4a;font-weight:600">Deprecated May 30 2026.</td></tr>
           <tr><td><code>llama-3.2-3b</code></td><td><code>@cf/meta/llama-3.2-3b-instruct</code></td><td style="color:#666">Lower cost, lower quality.</td></tr>
         </tbody>
       </table>
