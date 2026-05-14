@@ -872,7 +872,7 @@ wrangler d1 create mcp-knowledge-db<button class="code-copy" onclick="copyCode('
   <a href="https://developers.cloudflare.com/vectorize/" target="_blank">Vectorize</a> +
   <a href="https://developers.cloudflare.com/d1/" target="_blank">D1</a> +
   <a href="https://developers.cloudflare.com/workers-ai/" target="_blank">Workers AI</a>
-  &nbsp;&middot;&nbsp; Vision: Llama 4 Scout &nbsp;&middot;&nbsp; Reflection: Kimi K2.5 &nbsp;&middot;&nbsp; MCP: Streamable HTTP
+  &nbsp;&middot;&nbsp; Vision: Llama 4 Scout &nbsp;&middot;&nbsp; Reflection: Gemma 4 MoE &nbsp;&middot;&nbsp; MCP: Streamable HTTP
 </div>
 </div>
 

@@ -22,6 +22,7 @@ import { handleMcpTools, handleMcpCall } from './handlers/mcp';
 
 import { handleCostAnalytics } from './handlers/analytics';
 import { handleOpenApi } from './handlers/openapi';
+import { handleBenchmark, handleBenchmarkResults } from './handlers/benchmark';
 
 // Modern MCP server (Streamable HTTP transport, Durable Objects–backed)
 import { VectorizeMcpAgent } from './mcp/agent';
@@ -270,7 +271,15 @@ if (url.pathname === "/classify-intent" && request.method === "POST") {
 
 if (url.pathname === "/analytics/cost" && request.method === "GET") {
 	return handleCostAnalytics(request, env);
-  }
+}
+
+if (url.pathname === "/benchmark" && request.method === "POST") {
+	return handleBenchmark(request, env);
+}
+
+if (url.pathname === "/benchmark/results" && request.method === "GET") {
+	return handleBenchmarkResults(request, env);
+}
 
 // 404 for unknown routes
 		return new Response(
@@ -280,13 +289,14 @@ if (url.pathname === "/analytics/cost" && request.method === "GET") {
 			}),
 			{
 				status: 404,
-				headers: { 
+				headers: {
 					"Content-Type": "application/json",
 					...corsHeaders(),
 				},
 			}
 		);
 	},
+
 };
 
 

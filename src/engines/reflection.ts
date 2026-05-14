@@ -106,27 +106,30 @@ export class ReflectionEngine {
 			// search result. Three sentences, no fluff, max ~60 words total.
 			const categoryHint = doc.category ? ` (${doc.category})` : '';
 			const prompt =
-				`Synthesise these sources into 3 tightly written sentences for a knowledge base${categoryHint}.\n\n` +
-				`NEW:\n"${doc.content.substring(0, 500)}"\n\n` +
-				`EXISTING:\n${relatedContext}\n\n` +
-				`Output exactly 3 sentences — no labels, no preamble:\n` +
-				`1. The single most specific fact or capability the new source adds (use nouns/numbers).\n` +
-				`2. The strongest factual bridge between the new source and the existing sources.\n` +
-				`3. The most important question that remains unanswered after combining all sources.\n\n` +
-				`Hard rules: under 70 words total. No "The document". No "This shows". Facts only.`;
+				`Read the new source and related sources below, then write 3 plain prose sentences that synthesise them into a knowledge base entry${categoryHint}. ` +
+				`No bullets. No analysis. No preamble. Just 3 sentences.\n\n` +
+				`New: "${doc.content.substring(0, 500)}"\n\n` +
+				`Related:\n${relatedContext}\n\n` +
+				`Write the 3-sentence synthesis now:`;
 
 			const reflModel = resolveReflectionModel(env.REFLECTION_MODEL);
 			const llmResp = await env.AI.run(reflModel.id as any, {
 				messages: [{ role: 'user', content: prompt }],
-				max_tokens: 180,
+				max_tokens: 2048,
 			});
 
-			const reflectionText: string =
+			// For thinking models (Gemma 4), content holds the final answer;
+			// reasoning holds the internal chain of thought. Never use reasoning as the reflection.
+			const rawReflection: string =
+				(llmResp as any)?.choices?.[0]?.message?.content ||
 				(llmResp as any)?.response ||
 				(llmResp as any)?.result?.response ||
+				(llmResp as any)?.choices?.[0]?.text ||
 				'';
+			// Strip leading bullets/analysis if the model prefixed its reasoning
+			const reflectionText = rawReflection.replace(/^[\s\S]*?\n\n(?=[A-Z])/, '').trim() || rawReflection.trim();
 
-			if (!reflectionText.trim()) {
+			if (!reflectionText) {
 				console.warn('[Reflection] LLM returned empty for:', doc.id);
 				return;
 			}
@@ -292,12 +295,14 @@ export class ReflectionEngine {
 			const reflModel = resolveReflectionModel(env.REFLECTION_MODEL);
 			const llmResp = await env.AI.run(reflModel.id as any, {
 				messages: [{ role: 'user', content: prompt }],
-				max_tokens: 320,
+				max_tokens: 2048,
 			});
 
 			const summaryText: string =
 				(llmResp as any)?.response ||
 				(llmResp as any)?.result?.response ||
+				(llmResp as any)?.choices?.[0]?.message?.content ||
+				(llmResp as any)?.choices?.[0]?.text ||
 				'';
 
 			if (!summaryText.trim()) {

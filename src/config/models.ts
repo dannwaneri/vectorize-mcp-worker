@@ -68,14 +68,20 @@ export const ROUTING_MODELS = {
 
 /**
  * Reflection models — used for knowledge synthesis and multi-document consolidation.
- * Kimi K2.5 is the default: superior multi-document reasoning and structured output.
+ * Gemma 4 MoE is the recommended model: native Workers AI binding, 4B active params,
+ * no external API hop. Kimi K2.5 is deprecated May 30 2026.
  * Fall back to llama-3.2-3b for lower cost / higher throughput environments.
  */
 export const REFLECTION_MODELS = {
+	'gemma-4': {
+		id: '@cf/google/gemma-4-26b-a4b-it' as const,
+		label: 'Gemma 4 26B MoE (4B active)',
+		note: 'Recommended. 4B active params via MoE — edge-native, no external hop. Replaces deprecated Kimi K2.5.',
+	},
 	'kimi-k2.5': {
-		id: '@cf/moonshot/kimi-k2.5' as const,
+		id: '@cf/moonshotai/kimi-k2.5' as const,
 		label: 'Kimi K2.5',
-		note: 'Default. Excellent multi-document reasoning and structured synthesis. Best reflection quality.',
+		note: 'Deprecated May 30 2026. Will alias to kimi-k2.6 after that date.',
 	},
 	'llama-3.2-3b': {
 		id: '@cf/meta/llama-3.2-3b-instruct' as const,
