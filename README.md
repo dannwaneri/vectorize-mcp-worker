@@ -59,7 +59,7 @@ Standard RAG retrieves documents. It doesn't learn. Every query goes in cold —
 The reflection layer changes that. Every time you ingest a document:
 
 1. The system finds the most semantically related documents already in the index
-2. Kimi K2.5 synthesises a three-sentence insight: what the new document adds, how it connects to existing knowledge, and what gap remains
+2. Gemma 4 MoE (`@cf/google/gemma-4-26b-a4b-it`) synthesises a three-sentence insight: what the new document adds, how it connects to existing knowledge, and what gap remains
 3. That reflection is embedded, stored with `doc_type=reflection`, and given a 1.5× ranking boost in search results
 4. After every 3 new documents, reflections are consolidated into a `doc_type=summary` — a compressed view of what the knowledge base has learned
 
@@ -249,7 +249,7 @@ Everything runs on Cloudflare. No external services. No third-party billing. No 
 | **Embedding (multilingual)** | `@cf/baai/bge-m3` — 1024d |
 | **Reranker** | `@cf/baai/bge-reranker-base` |
 | **Vision / OCR** | `@cf/meta/llama-4-scout-17b-16e-instruct` |
-| **Knowledge reflection / synthesis** | `@cf/moonshot/kimi-k2.5` ★ Default — set `REFLECTION_MODEL` to override |
+| **Knowledge reflection / synthesis** | `@cf/google/gemma-4-26b-a4b-it` ★ Default (MoE, 4B active, edge-native) — set `REFLECTION_MODEL=gemma-4` |
 | **Query routing** | `@cf/meta/llama-3.2-3b-instruct` |
 | **MCP SDK** | `agents` v0.10 + `@modelcontextprotocol/sdk` v1.29 |
 
