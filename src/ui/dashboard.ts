@@ -210,6 +210,7 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
   <button class="tab active" data-tab="search" onclick="switchTab('search')">&#128269; Search</button>
   <button class="tab" data-tab="ingest" onclick="switchTab('ingest')">&#128229; Ingest</button>
   <button class="tab" data-tab="setup" onclick="switchTab('setup')">&#9881;&#65039; Setup</button>
+  <button class="tab" data-tab="reflections" onclick="switchTab('reflections')">&#129504; Reflections</button>
   <button class="tab" data-tab="guide" onclick="switchTab('guide')">&#128218; Guide</button>
 </div>
 
@@ -720,6 +721,22 @@ hr.divider{border:none;border-top:1px solid #1e1e1e;margin:4px 0 16px}
   </div>
 </div>
 
+<!-- ========== REFLECTIONS TAB ========== -->
+<div class="tab-content" id="tab-reflections">
+  <div class="card">
+    <h2 class="card-title">&#129504; Knowledge Reflections</h2>
+    <p style="color:#888;font-size:0.875rem;margin-bottom:16px">Gemma 4 MoE synthesised insights — cross-document connections your knowledge base has built over time.</p>
+    <div class="flex-row" style="margin-bottom:12px">
+      <input type="text" id="reflectQuery" placeholder="Filter by topic (leave blank for random)..." onkeydown="if(event.key==='Enter')loadReflections()">
+      <button class="btn" onclick="loadReflections()" style="width:auto;padding:12px 20px;flex-shrink:0">&#128269; Search</button>
+      <button class="btn btn-secondary" onclick="loadRandomReflection()" style="width:auto;padding:12px 20px;flex-shrink:0">&#127922; Random</button>
+    </div>
+    <div id="reflectionsLog" style="display:none">
+      <div id="reflectionsResults"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ========== GUIDE TAB ========== -->
 <div class="tab-content" id="tab-guide">
   <div class="card">
@@ -898,6 +915,81 @@ function switchLicenseTab(name, el) {
   document.querySelectorAll('.license-panel').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('lp-' + name).classList.add('active');
+}
+
+async function loadReflections() {
+  const query = document.getElementById('reflectQuery').value.trim() || 'insight synthesis knowledge connection';
+  const log = document.getElementById('reflectionsLog');
+  const results = document.getElementById('reflectionsResults');
+  log.style.display = 'block';
+  results.innerHTML = '<p style="color:#666;font-size:0.875rem">Loading...</p>';
+  try {
+    const res = await fetch('/search', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        query,
+        topK: 12,
+        includeMetadata: true,
+        rerank: true,
+        filter: { doc_type: { '$eq': 'reflection' } },
+      }),
+    });
+    const data = await res.json();
+    const items = data.results ?? data.matches ?? [];
+    if (!items.length) {
+      results.innerHTML = '<p style="color:#666;font-size:0.875rem">No reflections found. Run the reflection engine to generate some.</p>';
+      return;
+    }
+    results.innerHTML = items.map(r => {
+      const text = (r.text ?? r.content ?? '').trim();
+      const date = r.metadata?.created_at ? new Date(r.metadata.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
+      return \`<div style="background:#111;border:1px solid #262626;border-radius:8px;padding:16px;margin-bottom:12px">
+        <p style="color:#e0e0e0;font-size:0.9rem;line-height:1.6;margin:0 0 8px">\${text}</p>
+        \${date ? \`<span style="color:#555;font-size:0.75rem">\${date}</span>\` : ''}
+      </div>\`;
+    }).join('');
+  } catch(e) {
+    results.innerHTML = \`<p class="error">Error: \${e.message}</p>\`;
+  }
+}
+
+async function loadRandomReflection() {
+  document.getElementById('reflectQuery').value = '';
+  const seeds = ['insight','pattern','connection','synthesis','future','technology','Nigeria','society','AI','football','money','work'];
+  const seed = seeds[Math.floor(Math.random() * seeds.length)];
+  const log = document.getElementById('reflectionsLog');
+  const results = document.getElementById('reflectionsResults');
+  log.style.display = 'block';
+  results.innerHTML = '<p style="color:#666;font-size:0.875rem">Loading...</p>';
+  try {
+    const res = await fetch('/search', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        query: seed,
+        topK: 20,
+        includeMetadata: true,
+        rerank: false,
+        filter: { doc_type: { '$eq': 'reflection' } },
+      }),
+    });
+    const data = await res.json();
+    const items = data.results ?? data.matches ?? [];
+    if (!items.length) {
+      results.innerHTML = '<p style="color:#666;font-size:0.875rem">No reflections found yet.</p>';
+      return;
+    }
+    const pick = items[Math.floor(Math.random() * items.length)];
+    const text = (pick.text ?? pick.content ?? '').trim();
+    const date = pick.metadata?.created_at ? new Date(pick.metadata.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
+    results.innerHTML = \`<div style="background:#111;border:1px solid #262626;border-radius:8px;padding:20px">
+      <p style="color:#e0e0e0;font-size:0.95rem;line-height:1.7;margin:0 0 10px">\${text}</p>
+      \${date ? \`<span style="color:#555;font-size:0.75rem">Generated \${date}</span>\` : ''}
+    </div>\`;
+  } catch(e) {
+    results.innerHTML = \`<p class="error">Error: \${e.message}</p>\`;
+  }
 }
 
 function toggleIntentPanel() {
