@@ -917,6 +917,19 @@ function switchLicenseTab(name, el) {
   document.getElementById('lp-' + name).classList.add('active');
 }
 
+const GEMMA4_CUTOVER = '2026-05-10';
+const GEMMA4_FILTER = { doc_type: { '$eq': 'reflection' }, date_created: { '$gte': GEMMA4_CUTOVER } };
+
+function renderReflection(r) {
+  const text = (r.text ?? r.content ?? '').trim();
+  if (text.length < 80) return '';
+  const date = r.metadata?.created_at ? new Date(r.metadata.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
+  return \`<div style="background:#111;border:1px solid #262626;border-radius:8px;padding:16px;margin-bottom:12px">
+    <p style="color:#e0e0e0;font-size:0.9rem;line-height:1.6;margin:0 0 8px">\${text}</p>
+    \${date ? \`<span style="color:#555;font-size:0.75rem">Gemma 4 · \${date}</span>\` : ''}
+  </div>\`;
+}
+
 async function loadReflections() {
   const query = document.getElementById('reflectQuery').value.trim() || 'insight synthesis knowledge connection';
   const log = document.getElementById('reflectionsLog');
@@ -927,28 +940,15 @@ async function loadReflections() {
     const res = await fetch('/search', {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({
-        query,
-        topK: 12,
-        includeMetadata: true,
-        rerank: true,
-        filter: { doc_type: { '$eq': 'reflection' } },
-      }),
+      body: JSON.stringify({ query, topK: 20, includeMetadata: true, rerank: true, filter: GEMMA4_FILTER }),
     });
     const data = await res.json();
-    const items = data.results ?? data.matches ?? [];
+    const items = (data.results ?? data.matches ?? []).map(renderReflection).filter(Boolean);
     if (!items.length) {
-      results.innerHTML = '<p style="color:#666;font-size:0.875rem">No reflections found. Run the reflection engine to generate some.</p>';
+      results.innerHTML = '<p style="color:#666;font-size:0.875rem">No Gemma 4 reflections found on that topic yet.</p>';
       return;
     }
-    results.innerHTML = items.map(r => {
-      const text = (r.text ?? r.content ?? '').trim();
-      const date = r.metadata?.created_at ? new Date(r.metadata.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
-      return \`<div style="background:#111;border:1px solid #262626;border-radius:8px;padding:16px;margin-bottom:12px">
-        <p style="color:#e0e0e0;font-size:0.9rem;line-height:1.6;margin:0 0 8px">\${text}</p>
-        \${date ? \`<span style="color:#555;font-size:0.75rem">\${date}</span>\` : ''}
-      </div>\`;
-    }).join('');
+    results.innerHTML = items.join('');
   } catch(e) {
     results.innerHTML = \`<p class="error">Error: \${e.message}</p>\`;
   }
@@ -966,27 +966,16 @@ async function loadRandomReflection() {
     const res = await fetch('/search', {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({
-        query: seed,
-        topK: 20,
-        includeMetadata: true,
-        rerank: false,
-        filter: { doc_type: { '$eq': 'reflection' } },
-      }),
+      body: JSON.stringify({ query: seed, topK: 30, includeMetadata: true, rerank: false, filter: GEMMA4_FILTER }),
     });
     const data = await res.json();
-    const items = data.results ?? data.matches ?? [];
+    const items = (data.results ?? data.matches ?? []).filter(r => (r.text ?? r.content ?? '').length >= 80);
     if (!items.length) {
       results.innerHTML = '<p style="color:#666;font-size:0.875rem">No reflections found yet.</p>';
       return;
     }
     const pick = items[Math.floor(Math.random() * items.length)];
-    const text = (pick.text ?? pick.content ?? '').trim();
-    const date = pick.metadata?.created_at ? new Date(pick.metadata.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
-    results.innerHTML = \`<div style="background:#111;border:1px solid #262626;border-radius:8px;padding:20px">
-      <p style="color:#e0e0e0;font-size:0.95rem;line-height:1.7;margin:0 0 10px">\${text}</p>
-      \${date ? \`<span style="color:#555;font-size:0.75rem">Generated \${date}</span>\` : ''}
-    </div>\`;
+    results.innerHTML = renderReflection(pick);
   } catch(e) {
     results.innerHTML = \`<p class="error">Error: \${e.message}</p>\`;
   }
