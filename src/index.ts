@@ -286,12 +286,18 @@ if (url.pathname === "/reflections" && request.method === "GET") {
 	const since = url.searchParams.get("since") || "2026-05-10";
 	const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 50);
 	const search = q ? `%${q}%` : "%";
+	const fetchLimit = q ? limit * 5 : limit;
 	const rows = await (env as any).DB.prepare(
 		`SELECT content, created_at FROM documents
 		 WHERE doc_type = 'reflection' AND created_at >= ? AND content LIKE ? AND length(content) >= 80
 		 ORDER BY created_at DESC LIMIT ?`
-	).bind(since, search, limit).all();
-	return new Response(JSON.stringify({ results: rows.results }), {
+	).bind(since, search, fetchLimit).all();
+	let results = rows.results as { content: string; created_at: string }[];
+	if (q) {
+		const regex = new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+		results = results.filter(r => regex.test(r.content)).slice(0, limit);
+	}
+	return new Response(JSON.stringify({ results }), {
 		headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
 	});
 }
