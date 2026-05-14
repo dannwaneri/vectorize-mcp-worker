@@ -34,4 +34,7 @@ Thumbs.db
 # Sensitive data
 *.pem
 *.key
-secrets/.claude/
+secrets/
+
+# Claude session files
+.claude/
