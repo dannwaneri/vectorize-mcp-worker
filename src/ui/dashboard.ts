@@ -922,7 +922,8 @@ const GEMMA4_CUTOVER = '2026-05-10';
 function isGemma4(r) {
   const raw = r.metadata?.created_at;
   if (!raw) return false;
-  return new Date(raw) >= new Date(GEMMA4_CUTOVER) && (r.text ?? r.content ?? '').length >= 80;
+  const isReflection = (r.metadata?.doc_type ?? r.metadata?.docType ?? '') === 'reflection';
+  return isReflection && new Date(raw) >= new Date(GEMMA4_CUTOVER) && (r.text ?? r.content ?? '').length >= 80;
 }
 
 function renderReflection(r) {
@@ -944,7 +945,7 @@ async function loadReflections() {
     const res = await fetch('/search', {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ query, topK: 100, includeMetadata: true, rerank: true, filter: { doc_type: { '$eq': 'reflection' } } }),
+      body: JSON.stringify({ query, topK: 50, includeMetadata: true, rerank: false }),
     });
     const data = await res.json();
     const items = (data.results ?? data.matches ?? []).filter(isGemma4).map(renderReflection);
@@ -970,7 +971,7 @@ async function loadRandomReflection() {
     const res = await fetch('/search', {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ query: seed, topK: 100, includeMetadata: true, rerank: false, filter: { doc_type: { '$eq': 'reflection' } } }),
+      body: JSON.stringify({ query: seed, topK: 50, includeMetadata: true, rerank: false }),
     });
     const data = await res.json();
     const items = (data.results ?? data.matches ?? []).filter(isGemma4);
