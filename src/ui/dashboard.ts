@@ -920,8 +920,9 @@ function switchLicenseTab(name, el) {
 const GEMMA4_CUTOVER = '2026-05-10';
 
 function isGemma4(r) {
-  const d = r.metadata?.created_at ?? '';
-  return d >= GEMMA4_CUTOVER && (r.text ?? r.content ?? '').length >= 80;
+  const raw = r.metadata?.created_at;
+  if (!raw) return false;
+  return new Date(raw) >= new Date(GEMMA4_CUTOVER) && (r.text ?? r.content ?? '').length >= 80;
 }
 
 function renderReflection(r) {
