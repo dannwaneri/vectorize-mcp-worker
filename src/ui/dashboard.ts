@@ -944,7 +944,7 @@ async function loadReflections() {
     const res = await fetch('/search', {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ query, topK: 30, includeMetadata: true, rerank: true, filter: { doc_type: { '$eq': 'reflection' } } }),
+      body: JSON.stringify({ query, topK: 100, includeMetadata: true, rerank: true, filter: { doc_type: { '$eq': 'reflection' } } }),
     });
     const data = await res.json();
     const items = (data.results ?? data.matches ?? []).filter(isGemma4).map(renderReflection);
@@ -970,7 +970,7 @@ async function loadRandomReflection() {
     const res = await fetch('/search', {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ query: seed, topK: 50, includeMetadata: true, rerank: false, filter: { doc_type: { '$eq': 'reflection' } } }),
+      body: JSON.stringify({ query: seed, topK: 100, includeMetadata: true, rerank: false, filter: { doc_type: { '$eq': 'reflection' } } }),
     });
     const data = await res.json();
     const items = (data.results ?? data.matches ?? []).filter(isGemma4);
