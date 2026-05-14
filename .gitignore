@@ -34,4 +34,4 @@ Thumbs.db
 # Sensitive data
 *.pem
 *.key
-secrets/
+secrets/.claude/
