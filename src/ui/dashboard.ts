@@ -918,11 +918,14 @@ function switchLicenseTab(name, el) {
 }
 
 const GEMMA4_CUTOVER = '2026-05-10';
-const GEMMA4_FILTER = { doc_type: { '$eq': 'reflection' }, date_created: { '$gte': GEMMA4_CUTOVER } };
+
+function isGemma4(r) {
+  const d = r.metadata?.created_at ?? '';
+  return d >= GEMMA4_CUTOVER && (r.text ?? r.content ?? '').length >= 80;
+}
 
 function renderReflection(r) {
   const text = (r.text ?? r.content ?? '').trim();
-  if (text.length < 80) return '';
   const date = r.metadata?.created_at ? new Date(r.metadata.created_at).toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }) : '';
   return \`<div style="background:#111;border:1px solid #262626;border-radius:8px;padding:16px;margin-bottom:12px">
     <p style="color:#e0e0e0;font-size:0.9rem;line-height:1.6;margin:0 0 8px">\${text}</p>
@@ -940,10 +943,10 @@ async function loadReflections() {
     const res = await fetch('/search', {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ query, topK: 20, includeMetadata: true, rerank: true, filter: GEMMA4_FILTER }),
+      body: JSON.stringify({ query, topK: 30, includeMetadata: true, rerank: true, filter: { doc_type: { '$eq': 'reflection' } } }),
     });
     const data = await res.json();
-    const items = (data.results ?? data.matches ?? []).map(renderReflection).filter(Boolean);
+    const items = (data.results ?? data.matches ?? []).filter(isGemma4).map(renderReflection);
     if (!items.length) {
       results.innerHTML = '<p style="color:#666;font-size:0.875rem">No Gemma 4 reflections found on that topic yet.</p>';
       return;
@@ -966,16 +969,15 @@ async function loadRandomReflection() {
     const res = await fetch('/search', {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ query: seed, topK: 30, includeMetadata: true, rerank: false, filter: GEMMA4_FILTER }),
+      body: JSON.stringify({ query: seed, topK: 50, includeMetadata: true, rerank: false, filter: { doc_type: { '$eq': 'reflection' } } }),
     });
     const data = await res.json();
-    const items = (data.results ?? data.matches ?? []).filter(r => (r.text ?? r.content ?? '').length >= 80);
+    const items = (data.results ?? data.matches ?? []).filter(isGemma4);
     if (!items.length) {
-      results.innerHTML = '<p style="color:#666;font-size:0.875rem">No reflections found yet.</p>';
+      results.innerHTML = '<p style="color:#666;font-size:0.875rem">No Gemma 4 reflections found yet.</p>';
       return;
     }
-    const pick = items[Math.floor(Math.random() * items.length)];
-    results.innerHTML = renderReflection(pick);
+    results.innerHTML = renderReflection(items[Math.floor(Math.random() * items.length)]);
   } catch(e) {
     results.innerHTML = \`<p class="error">Error: \${e.message}</p>\`;
   }
