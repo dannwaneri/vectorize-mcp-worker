@@ -1,7 +1,7 @@
 import { Env } from '../types/env';
 
 // Public paths that never require authentication
-const PUBLIC_PATHS = new Set(['/', '/test', '/dashboard', '/llms.txt', '/mcp/tools']);
+const PUBLIC_PATHS = new Set(['/', '/test', '/dashboard', '/llms.txt', '/mcp/tools', '/public-stats']);
 
 export function authenticate(request: Request, env: Env): Response | null {
 	const url = new URL(request.url);

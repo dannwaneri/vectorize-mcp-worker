@@ -2,7 +2,7 @@ import { Env } from './types/env';
 import { IngestionEngine } from './engines/ingestion';
 import { authenticate } from './middleware/auth';
 import { corsHeaders, handleCorsPrelight } from './middleware/cors';
-import { resolveEmbeddingModel, RERANKER_MODELS, DEFAULT_RERANKER, VISION_MODELS, DEFAULT_VISION, ROUTING_MODELS, DEFAULT_ROUTING } from './config/models';
+import { resolveEmbeddingModel, resolveReflectionModel, RERANKER_MODELS, DEFAULT_RERANKER, VISION_MODELS, DEFAULT_VISION, ROUTING_MODELS, DEFAULT_ROUTING } from './config/models';
 
 import { handleSearch, handleClassifyIntent } from './handlers/search';
 import { handleIngest, handleReflectBatch } from './handlers/ingest';
@@ -43,6 +43,42 @@ export default {
 if (request.method === "OPTIONS") {
     return handleCorsPrelight();
 }
+
+		// Public stats — no auth required, for live system verification
+		if (url.pathname === "/public-stats" && request.method === "GET") {
+			try {
+				const vectorStats = await env.VECTORIZE.describe();
+				const docStats = env.DB
+					? await env.DB.prepare('SELECT total_documents FROM doc_stats WHERE id = 1').first()
+					: null;
+				const reflectionCount = env.DB
+					? await env.DB.prepare("SELECT COUNT(*) as count FROM documents WHERE doc_type = 'reflection'").first()
+					: null;
+				const reflModel = resolveReflectionModel(env.REFLECTION_MODEL);
+				return new Response(
+					JSON.stringify({
+						live: true,
+						timestamp: new Date().toISOString(),
+						documents: (docStats as any)?.total_documents ?? vectorStats.vectorsCount,
+						reflections: (reflectionCount as any)?.count ?? 0,
+						models: {
+							reflection: reflModel.id,
+						},
+						pipeline: "bookmark-cli → embed (BGE Small) → retrieve (Vectorize + BM25) → rerank (BGE cross-encoder) → reflect (Gemma 4 MoE)",
+					}),
+					{
+						headers: {
+							"Content-Type": "application/json",
+							"Access-Control-Allow-Origin": "*",
+						},
+					}
+				);
+			} catch (e) {
+				return new Response(JSON.stringify({ live: true, error: "stats unavailable" }), {
+					headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+				});
+			}
+		}
 
 		// Authenticate request
 		const authError = authenticate(request, env);
